@@ -13,6 +13,7 @@ const Arousal = {
 
 const Mood = {
   POSITIVE: 'POSITIVE',
+  NEUTRAL: 'NEUTRAL',
   NEGATIVE: 'NEGATIVE',
 }
 
@@ -30,18 +31,32 @@ function getArousal(frame) {
 }
 
 function getMood(frame) {
-  const idx = Math.floor(frame / 3) % 2
-  return idx === 0 ? Mood.NEGATIVE : Mood.POSITIVE
+  const idx = Math.floor(frame / 3) % 3
+  return values(Mood)[idx]
 }
 
+const fifthIntervals = ['1P', '5P']
 const majorIntervals = ['1P', '3M', '5P']
 const minorIntervals = ['1P', '3m', '5P']
 
 const majorRootKeys = ['1P', '4P', '5P']
 const minorRootKeys = ['2M', '3M', '6M']
 
+const neutralColoringIntervals = ['9M']
 const majorColoringIntervals = ['7M', '9M']
 const minorColoringIntervals = ['7m', '9M']
+
+const moodIntervals = {
+  [Mood.POSITIVE]: majorIntervals,
+  [Mood.NEUTRAL]: fifthIntervals,
+  [Mood.NEGATIVE]: minorIntervals,
+}
+
+const moodColoringIntervals = {
+  [Mood.POSITIVE]: majorColoringIntervals,
+  [Mood.NEUTRAL]: neutralColoringIntervals,
+  [Mood.NEGATIVE]: minorColoringIntervals,
+}
 
 let f = 0
 let rootKey = 'C4'
@@ -55,13 +70,10 @@ function getChord(mood, arousal, rootKey) {
       : minorRootKeys[random(minorRootKeys.length - 1)]
 
   // Get the chord intervals for the key
-  const chordIntervals =
-    mood === Mood.POSITIVE ? majorIntervals : minorIntervals
+  const chordIntervals = moodIntervals[mood]
 
   // Select extra colorings
-  const coloringIntervals = shuffle(
-    mood === Mood.POSITIVE ? majorColoringIntervals : minorColoringIntervals
-  )
+  const coloringIntervals = shuffle(moodColoringIntervals[mood])
   const numAppliedColorIntervals = {
     [Arousal.PASSIVE]: 0,
     [Arousal.NEUTRAL]: 1,
@@ -138,7 +150,10 @@ async function run() {
 
   // Play solo note
   setInterval(() => {
-    const soloNote = transpose(pickRandom(chord), '8P')
+    const soloNote = transpose(
+      transpose(pickRandom(chord), '8P'),
+      arousal === Arousal.ACTIVE ? '8P' : '1P'
+    )
     device.send('noteoff', { channel: 1, note: midi(lastSoloNote) })
     device.send('noteon', {
       channel: 1,
