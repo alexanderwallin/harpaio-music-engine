@@ -1,9 +1,13 @@
+require = require('@std/esm')(module, { mode: 'js' })
+
 const { flatten, intersection, random, shuffle, values } = require('lodash')
+const duration = require('note-duration')
 const { midi, Note, transpose } = require('tonal')
+const Sequencer = require('um-sequencer').default
 
 const device = require('./midi-device.js')
 
-const duration = parseInt(process.argv[2]) || 2000
+const tempo = parseInt(process.argv[2]) || 120
 
 const Arousal = {
   ACTIVE: 'ACTIVE',
@@ -23,6 +27,12 @@ async function delay(ms) {
 
 function pickRandom(arr) {
   return shuffle(arr)[0]
+}
+
+function createSequencer(dawnOfTime) {
+  return new Sequencer(() => (Date.now() - dawnOfTime) / 1000, {
+    useWorker: false,
+  })
 }
 
 function getArousal(frame) {
@@ -57,10 +67,6 @@ const moodColoringIntervals = {
   [Mood.NEUTRAL]: neutralColoringIntervals,
   [Mood.NEGATIVE]: minorColoringIntervals,
 }
-
-let f = 0
-let rootKey = 'C4'
-let lastChord = []
 
 function getChord(mood, arousal, rootKey) {
   // Get key
@@ -99,14 +105,22 @@ async function run() {
   let rootKey = 'C4'
   let chord = [rootKey]
   let lastChord = []
-  let lastSoloNote = null
   let mood = null
   let arousal = Arousal.PASSIVE
 
-  await delay(100)
+  const startTime = Date.now()
+  const clockSequencer = createSequencer(startTime)
+  const chordsSequencer = createSequencer(startTime)
+  const soloNoteSequencer = createSequencer(startTime)
+
+  function nextBar() {
+    updateChord()
+    playChords()
+    playSoloNotes()
+  }
 
   // Update chords
-  setInterval(() => {
+  function updateChord() {
     if (f % 12 === 11) {
       // Perform mediantic transposition in the same mood
       console.log('--- change key ---')
@@ -122,17 +136,17 @@ async function run() {
     lastChord = [...chord]
     chord = getChord(mood, arousal, rootKey)
     f++
-  }, duration)
+  }
 
   // Play chords
-  setInterval(() => {
-    // Play chord
+  function playChords() {
     lastChord.forEach(note =>
       device.send('noteoff', {
         channel: 0,
         note: midi(note),
       })
     )
+
     chord.forEach(note =>
       device.send('noteon', {
         channel: 0,
@@ -145,34 +159,56 @@ async function run() {
             : random(60, 100),
       })
     )
+
     console.log(`${mood} (${arousal}) - ${rootKey}: [${chord.join(', ')}]`)
-  }, duration)
+  }
 
   // Play solo note
-  function playSoloNote() {
-    const soloNoteDurations = {
-      [Arousal.ACTIVE]: duration / 4,
-      [Arousal.NEUTRAL]: duration / 2,
-      [Arousal.PASSIVE]: duration,
+  function playSoloNotes() {
+    const soloNoteCounts = {
+      [Arousal.ACTIVE]: 3,
+      [Arousal.NEUTRAL]: 1,
+      [Arousal.PASSIVE]: 0,
     }
 
-    const soloNote = transpose(
-      transpose(pickRandom(chord), '8P'),
-      arousal === Arousal.ACTIVE ? '8P' : '1P'
-    )
-    device.send('noteoff', { channel: 1, note: midi(lastSoloNote) })
-    device.send('noteon', {
-      channel: 1,
-      note: midi(soloNote),
-      velocity: random(50, 100),
-    })
+    const soloNotes = shuffle(chord)
+      .slice(0, soloNoteCounts[arousal])
+      .map(note => transpose(note, '8P'))
+      .map(note => transpose(note, arousal === Arousal.ACTIVE ? '8P' : '1P'))
+    const soloNoteDurations = soloNotes.map(() => pickRandom(['16', '8']))
+    const soloNoteDelay = pickRandom(['16', '8', '4'].map(duration).concat(0))
 
-    lastSoloNote = soloNote
-    console.log(`+ ${soloNote}`)
+    const scheduledSoloNotes = soloNotes.map((note, i) => ({
+      time: soloNoteDurations
+        .slice(0, i)
+        .map(x => duration(x))
+        .reduce((aggr, x) => aggr + x, 0.01 + soloNoteDelay),
+      callback: async () => {
+        device.send('noteon', {
+          channel: 1,
+          note: midi(note),
+          velocity: random(50, 100),
+        })
 
-    setTimeout(playSoloNote, soloNoteDurations[arousal])
+        console.log(`+ ${note}`)
+
+        await delay(1000 * (60 / tempo) / 8)
+        device.send('noteoff', {
+          channel: 1,
+          note: midi(note),
+        })
+      },
+    }))
+
+    soloNoteSequencer.play(scheduledSoloNotes, { tempo })
   }
-  playSoloNote()
+
+  await delay(100)
+
+  clockSequencer.play([{ time: 0, callback: nextBar }], {
+    loopLength: duration('1'),
+    tempo,
+  })
 }
 
 run()
