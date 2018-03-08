@@ -1,0 +1,21 @@
+{
+  "name": "chord-progressions",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Alexander Wallin <office@alexanderwallin.com> (http://alexanderwallin.com)",
+  "license": "ISC",
+  "dependencies": {
+    "easymidi": "0.0.4",
+    "lodash": "^4.17.5",
+    "music-scale": "^1.2.0",
+    "tonal": "^1.1.3"
+  },
+  "devDependencies": {
+    "prettier": "^1.11.1"
+  }
+}
