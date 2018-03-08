@@ -101,7 +101,7 @@ async function run() {
   let lastChord = []
   let lastSoloNote = null
   let mood = null
-  let arousal = null
+  let arousal = Arousal.PASSIVE
 
   await delay(100)
 
@@ -149,7 +149,13 @@ async function run() {
   }, duration)
 
   // Play solo note
-  setInterval(() => {
+  function playSoloNote() {
+    const soloNoteDurations = {
+      [Arousal.ACTIVE]: duration / 4,
+      [Arousal.NEUTRAL]: duration / 2,
+      [Arousal.PASSIVE]: duration,
+    }
+
     const soloNote = transpose(
       transpose(pickRandom(chord), '8P'),
       arousal === Arousal.ACTIVE ? '8P' : '1P'
@@ -163,7 +169,10 @@ async function run() {
 
     lastSoloNote = soloNote
     console.log(`+ ${soloNote}`)
-  }, duration / 2)
+
+    setTimeout(playSoloNote, soloNoteDurations[arousal])
+  }
+  playSoloNote()
 }
 
 run()
