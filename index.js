@@ -1,9 +1,15 @@
-const { flatten, intersection, random, shuffle } = require('lodash')
+const { flatten, intersection, random, shuffle, values } = require('lodash')
 const { midi, Note, transpose } = require('tonal')
 
 const device = require('./midi-device.js')
 
 const duration = parseInt(process.argv[2]) || 2000
+
+const Arousal = {
+  ACTIVE: 'ACTIVE',
+  NEUTRAL: 'NEUTRAL',
+  PASSIVE: 'PASSIVE',
+}
 
 const Mood = {
   POSITIVE: 'POSITIVE',
@@ -16,6 +22,11 @@ async function delay(ms) {
 
 function pickRandom(arr) {
   return shuffle(arr)[0]
+}
+
+function getArousal(frame) {
+  const idx = Math.floor(frame / 5) % 3
+  return values(Arousal)[idx]
 }
 
 function getMood(frame) {
@@ -36,7 +47,7 @@ let f = 0
 let rootKey = 'C4'
 let lastChord = []
 
-function getChord(mood, rootKey) {
+function getChord(mood, arousal, rootKey) {
   // Get key
   const chordKey =
     mood === Mood.POSITIVE
@@ -51,9 +62,14 @@ function getChord(mood, rootKey) {
   const coloringIntervals = shuffle(
     mood === Mood.POSITIVE ? majorColoringIntervals : minorColoringIntervals
   )
+  const numAppliedColorIntervals = {
+    [Arousal.PASSIVE]: 0,
+    [Arousal.NEUTRAL]: 1,
+    [Arousal.ACTIVE]: 2,
+  }[arousal]
   const appliedColoringIntervals = coloringIntervals.slice(
     0,
-    random(majorColoringIntervals.length - 1)
+    numAppliedColorIntervals
   )
 
   // Transpose and actualise chord notes
@@ -73,6 +89,7 @@ async function run() {
   let lastChord = []
   let lastSoloNote = null
   let mood = null
+  let arousal = null
 
   await delay(100)
 
@@ -88,9 +105,10 @@ async function run() {
       // Update mood
       mood = getMood(f)
     }
+    arousal = getArousal(f)
 
     lastChord = [...chord]
-    chord = getChord(mood, rootKey)
+    chord = getChord(mood, arousal, rootKey)
     f++
   }, duration)
 
@@ -115,7 +133,7 @@ async function run() {
             : random(60, 100),
       })
     )
-    console.log(mood, rootKey, `[${chord.join(', ')}]`)
+    console.log(`${mood} (${arousal}) - ${rootKey}: [${chord.join(', ')}]`)
   }, duration)
 
   // Play solo note
