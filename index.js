@@ -5,45 +5,11 @@ const duration = require('note-duration')
 const { midi, Note, transpose } = require('tonal')
 const Sequencer = require('um-sequencer').default
 
+const { getSentimentalState } = require('./api.js')
+const { Arousal, Mood } = require('./constants.js')
 const device = require('./midi-device.js')
 
 const tempo = parseInt(process.argv[2]) || 120
-
-const Arousal = {
-  ACTIVE: 'ACTIVE',
-  NEUTRAL: 'NEUTRAL',
-  PASSIVE: 'PASSIVE',
-}
-
-const Mood = {
-  POSITIVE: 'POSITIVE',
-  NEUTRAL: 'NEUTRAL',
-  NEGATIVE: 'NEGATIVE',
-}
-
-async function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function pickRandom(arr) {
-  return shuffle(arr)[0]
-}
-
-function createSequencer(dawnOfTime) {
-  return new Sequencer(() => (Date.now() - dawnOfTime) / 1000, {
-    useWorker: false,
-  })
-}
-
-function getArousal(frame) {
-  const idx = Math.floor(frame / 5) % 3
-  return values(Arousal)[idx]
-}
-
-function getMood(frame) {
-  const idx = Math.floor(frame / 3) % 3
-  return values(Mood)[idx]
-}
 
 const fifthIntervals = ['1P', '5P']
 const majorIntervals = ['1P', '3M', '5P']
@@ -66,6 +32,44 @@ const moodColoringIntervals = {
   [Mood.POSITIVE]: majorColoringIntervals,
   [Mood.NEUTRAL]: neutralColoringIntervals,
   [Mood.NEGATIVE]: minorColoringIntervals,
+}
+
+let globalArousal = Arousal.NEUTRAL
+let globalMood = Mood.NEUTRAL
+
+async function querySentiment() {
+  try {
+    const sentiment = await getSentimentalState()
+    globalArousal = sentiment.arousal
+    globalMood = sentiment.mood
+  } catch (err) {
+    console.log('poop')
+    console.log(err)
+  }
+
+  setTimeout(() => querySentiment(), 1000)
+}
+
+async function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function pickRandom(arr) {
+  return shuffle(arr)[0]
+}
+
+function createSequencer(dawnOfTime) {
+  return new Sequencer(() => (Date.now() - dawnOfTime) / 1000, {
+    useWorker: false,
+  })
+}
+
+function getArousal() {
+  return globalArousal
+}
+
+function getMood() {
+  return globalMood
 }
 
 function getChord(mood, arousal, rootKey) {
@@ -112,11 +116,13 @@ async function run() {
   const clockSequencer = createSequencer(startTime)
   const chordsSequencer = createSequencer(startTime)
   const soloNoteSequencer = createSequencer(startTime)
+  const drumSequencer = createSequencer(startTime)
 
   function nextBar() {
     updateChord()
     playChords()
     playSoloNotes()
+    playDrums()
   }
 
   // Update chords
@@ -203,6 +209,49 @@ async function run() {
     soloNoteSequencer.play(scheduledSoloNotes, { tempo })
   }
 
+  function playDrums() {
+    const noteProbability = {
+      [Arousal.ACTIVE]: () => 0.3,
+      [Arousal.NEUTRAL]: () => 0.1,
+      [Arousal.PASSIVE]: () => 0.05,
+    }
+
+    const patterns = [0, 1, 2].map(x =>
+      new Array(16)
+        .fill(0)
+        .map(() => Math.random() <= noteProbability[arousal]())
+    )
+
+    console.log(
+      patterns
+        .map(pattern => pattern.map(x => (x ? 'x' : '-')).join(''))
+        .join('\n')
+    )
+
+    const sequences = patterns.map((pattern, patternIdx) =>
+      pattern.map((hit, i) => ({
+        time: i * 1 / 16 + 0.01,
+        callback: async () => {
+          const note = midi('C2') + patternIdx
+
+          if (hit === true) {
+            device.send('noteon', {
+              channel: 2,
+              note: note,
+              velocity: random(20, 100),
+            })
+            await delay(1)
+            device.send('noteoff', {
+              channel: 2,
+              note: note,
+            })
+          }
+        },
+      }))
+    )
+    drumSequencer.play(flatten(sequences), { tempo })
+  }
+
   await delay(100)
 
   clockSequencer.play([{ time: 0, callback: nextBar }], {
@@ -211,7 +260,11 @@ async function run() {
   })
 }
 
-run()
+querySentiment()
+run().catch(err => {
+  console.log('Ouch!')
+  console.log(err)
+})
 
 async function exitHandler() {
   device.close()
