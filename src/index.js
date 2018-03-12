@@ -5,9 +5,9 @@ const duration = require('note-duration')
 const { midi, Note, transpose } = require('tonal')
 const Sequencer = require('um-sequencer').default
 
-const { getSentimentalState } = require('./api.js')
 const { Arousal, Mood } = require('./constants.js')
 const device = require('./midi-device.js')
+const { getSentiment, startSentimentQuerying } = require('./sentiment.js')
 
 const tempo = parseInt(process.argv[2]) || 120
 
@@ -32,22 +32,6 @@ const moodColoringIntervals = {
   [Mood.POSITIVE]: majorColoringIntervals,
   [Mood.NEUTRAL]: neutralColoringIntervals,
   [Mood.NEGATIVE]: minorColoringIntervals,
-}
-
-let globalArousal = Arousal.NEUTRAL
-let globalMood = Mood.NEUTRAL
-
-async function querySentiment() {
-  try {
-    const sentiment = await getSentimentalState()
-    globalArousal = sentiment.arousal
-    globalMood = sentiment.mood
-  } catch (err) {
-    console.log('poop')
-    console.log(err)
-  }
-
-  setTimeout(() => querySentiment(), 1000)
 }
 
 async function delay(ms) {
@@ -105,6 +89,8 @@ function getChord(mood, arousal, rootKey) {
 }
 
 async function run() {
+  startSentimentQuerying()
+
   let f = 0
   let rootKey = 'C4'
   let chord = [rootKey]
@@ -133,11 +119,11 @@ async function run() {
       const medians = ['M-3', 'm-3', '3m', '3M']
       const median = pickRandom(medians)
       rootKey = Note.fromMidi(midi(transpose(rootKey, median)))
-    } else {
-      // Update mood
-      mood = getMood(f)
     }
-    arousal = getArousal(f)
+
+    const sentiment = getSentiment()
+    arousal = sentiment.arousal
+    mood = sentiment.mood
 
     lastChord = [...chord]
     chord = getChord(mood, arousal, rootKey)
@@ -260,7 +246,6 @@ async function run() {
   })
 }
 
-querySentiment()
 run().catch(err => {
   console.log('Ouch!')
   console.log(err)
