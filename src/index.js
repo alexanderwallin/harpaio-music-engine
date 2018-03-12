@@ -1,6 +1,7 @@
+// eslint-disable-next-line
 require = require('@std/esm')(module, { mode: 'js' })
 
-const { flatten, intersection, random, shuffle, values } = require('lodash')
+const { flatten, random, shuffle } = require('lodash')
 const duration = require('note-duration')
 const { midi, Note, transpose } = require('tonal')
 const Sequencer = require('um-sequencer').default
@@ -9,7 +10,7 @@ const { Arousal, Mood } = require('./constants.js')
 const device = require('./midi-device.js')
 const { getSentiment, startSentimentQuerying } = require('./sentiment.js')
 
-const tempo = parseInt(process.argv[2]) || 120
+const tempo = parseInt(process.argv[2], 10) || 120
 
 const fifthIntervals = ['1P', '5P']
 const majorIntervals = ['1P', '3M', '5P']
@@ -46,14 +47,6 @@ function createSequencer(dawnOfTime) {
   return new Sequencer(() => (Date.now() - dawnOfTime) / 1000, {
     useWorker: false,
   })
-}
-
-function getArousal() {
-  return globalArousal
-}
-
-function getMood() {
-  return globalMood
 }
 
 function getChord(mood, arousal, rootKey) {
@@ -100,16 +93,8 @@ async function run() {
 
   const startTime = Date.now()
   const clockSequencer = createSequencer(startTime)
-  const chordsSequencer = createSequencer(startTime)
   const soloNoteSequencer = createSequencer(startTime)
   const drumSequencer = createSequencer(startTime)
-
-  function nextBar() {
-    updateChord()
-    playChords()
-    playSoloNotes()
-    playDrums()
-  }
 
   // Update chords
   function updateChord() {
@@ -122,12 +107,12 @@ async function run() {
     }
 
     const sentiment = getSentiment()
-    arousal = sentiment.arousal
-    mood = sentiment.mood
+    arousal = sentiment.arousal // eslint-disable-line
+    mood = sentiment.mood // eslint-disable-line
 
     lastChord = [...chord]
     chord = getChord(mood, arousal, rootKey)
-    f++
+    f += 1
   }
 
   // Play chords
@@ -202,7 +187,7 @@ async function run() {
       [Arousal.PASSIVE]: () => 0.05,
     }
 
-    const patterns = [0, 1, 2].map(x =>
+    const patterns = [0, 1, 2].map(() =>
       new Array(16)
         .fill(0)
         .map(() => Math.random() <= noteProbability[arousal]())
@@ -223,19 +208,26 @@ async function run() {
           if (hit === true) {
             device.send('noteon', {
               channel: 2,
-              note: note,
+              note,
               velocity: random(20, 100),
             })
             await delay(1)
             device.send('noteoff', {
               channel: 2,
-              note: note,
+              note,
             })
           }
         },
       }))
     )
     drumSequencer.play(flatten(sequences), { tempo })
+  }
+
+  function nextBar() {
+    updateChord()
+    playChords()
+    playSoloNotes()
+    playDrums()
   }
 
   await delay(100)

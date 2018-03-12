@@ -17,10 +17,13 @@ async function fetchSentimentalState() {
   return { arousal, mood }
 }
 
-module.exports.startSentimentQuerying = function(intervalMs) {
+function startSentimentQuerying(intervalMs) {
   setInterval(fetchSentimentalState, intervalMs)
 }
 
-module.exports.getSentiment = function() {
+function getSentiment() {
   return { arousal, mood }
 }
+
+module.exports.startSentimentQuerying = startSentimentQuerying
+module.exports.getSentiment = getSentiment
