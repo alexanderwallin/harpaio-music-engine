@@ -8,11 +8,15 @@ let arousal = Arousal.NEUTRAL
 let mood = Mood.NEUTRAL
 
 async function fetchSentimentalState() {
-  const response = await got(`${API_URL}/aggregated-predictions`, {
+  const response = await got(`${API_URL}/channel-predictions`, {
     json: true,
   })
-  arousal = values(Arousal)[response.body.data[0][0]]
-  mood = values(Mood)[response.body.data[0][1]]
+  const { data } = response.body
+
+  arousal = data ? values(Arousal)[data[0][0]] : Arousal.NEUTRAL
+  mood = data ? values(Mood)[data[0][1]] : Mood.NEUTRAL
+
+  // console.log({ arousal, mood })
 
   return { arousal, mood }
 }
