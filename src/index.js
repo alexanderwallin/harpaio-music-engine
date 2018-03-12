@@ -82,7 +82,7 @@ function getChord(mood, arousal, rootKey) {
 }
 
 async function run() {
-  startSentimentQuerying()
+  startSentimentQuerying(500)
 
   let f = 0
   let rootKey = 'C4'
