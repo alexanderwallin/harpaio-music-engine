@@ -8,9 +8,14 @@ const Sequencer = require('um-sequencer').default
 
 const { Arousal, Mood } = require('./constants.js')
 const device = require('./midi-device.js')
-const { getSentiment, startSentimentQuerying } = require('./sentiment.js')
+const {
+  getActivity,
+  getSentiment,
+  startSentimentQuerying,
+} = require('./sentiment.js')
 
 const tempo = parseInt(process.argv[2], 10) || 120
+const isLoggingEnabled = parseInt(process.argv[3], 10)
 
 const fifthIntervals = ['1P', '5P']
 const majorIntervals = ['1P', '3M', '5P']
@@ -35,12 +40,27 @@ const moodColoringIntervals = {
   [Mood.NEGATIVE]: minorColoringIntervals,
 }
 
+const kickSequences = [
+  [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+  [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
+  [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+  [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
+  [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
+  [1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
+]
+
 async function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 function pickRandom(arr) {
   return shuffle(arr)[0]
+}
+
+function log(...args) {
+  if (isLoggingEnabled) {
+    console.log(...args)
+  }
 }
 
 function createSequencer(dawnOfTime) {
@@ -84,23 +104,29 @@ function getChord(mood, arousal, rootKey) {
 async function run() {
   startSentimentQuerying(500)
 
-  let f = 0
+  let f = -1
   let rootKey = 'C4'
   let chord = [rootKey]
   let lastChord = []
+  let bassline = []
+  let basslineHitOrder = []
+  let bassSequence = []
   let mood = null
   let arousal = Arousal.PASSIVE
+  let relativeActivity = 0
 
   const startTime = Date.now()
   const clockSequencer = createSequencer(startTime)
   const soloNoteSequencer = createSequencer(startTime)
   const drumSequencer = createSequencer(startTime)
+  const bassSequencer = createSequencer(startTime)
+  const kickSequencer = createSequencer(startTime)
 
   // Update chords
   function updateChord() {
     if (f % 24 === 23) {
       // Perform mediantic transposition in the same mood
-      console.log('--- change key ---')
+      log('--- change key ---')
       const medians = ['M-3', 'm-3', '3m', '3M']
       const median = pickRandom(medians)
       rootKey = Note.fromMidi(midi(transpose(rootKey, median)))
@@ -112,7 +138,6 @@ async function run() {
 
     lastChord = [...chord]
     chord = getChord(mood, arousal, rootKey)
-    f += 1
   }
 
   // Play chords
@@ -137,19 +162,17 @@ async function run() {
       })
     )
 
-    console.log(`${mood} (${arousal}) - ${rootKey}: [${chord.join(', ')}]`)
+    log(`${mood} (${arousal}) - ${rootKey}: [${chord.join(', ')}]`)
   }
 
   // Play solo note
   function playSoloNotes() {
-    const soloNoteCounts = {
-      [Arousal.ACTIVE]: 3,
-      [Arousal.NEUTRAL]: 1,
-      [Arousal.PASSIVE]: 0,
+    if (arousal === Arousal.PASSIVE) {
+      return
     }
 
     const soloNotes = shuffle(chord)
-      .slice(0, soloNoteCounts[arousal])
+      .slice(0, Math.round(relativeActivity * chord.length))
       .map(note => transpose(note, '8P'))
       .map(note => transpose(note, arousal === Arousal.ACTIVE ? '8P' : '1P'))
     const soloNoteDurations = soloNotes.map(() => pickRandom(['16', '8']))
@@ -159,7 +182,7 @@ async function run() {
       time: soloNoteDurations
         .slice(0, i)
         .map(x => duration(x))
-        .reduce((aggr, x) => aggr + x, 0.01 + soloNoteDelay),
+        .reduce((aggr, x) => aggr + x, soloNoteDelay + 0.05),
       callback: async () => {
         device.send('noteon', {
           channel: 1,
@@ -167,7 +190,7 @@ async function run() {
           velocity: random(50, 100),
         })
 
-        console.log(`+ ${note}`)
+        log(`+ ${note}`)
 
         await delay(1000 * (60 / tempo) / 8)
         device.send('noteoff', {
@@ -181,19 +204,15 @@ async function run() {
   }
 
   function playDrums() {
-    const noteProbability = {
-      [Arousal.ACTIVE]: () => 0.3,
-      [Arousal.NEUTRAL]: () => 0.1,
-      [Arousal.PASSIVE]: () => 0.05,
+    if (arousal === Arousal.PASSIVE) {
+      return
     }
 
     const patterns = [0, 1, 2].map(() =>
-      new Array(16)
-        .fill(0)
-        .map(() => Math.random() <= noteProbability[arousal]())
+      new Array(16).fill(0).map(() => Math.random() <= relativeActivity / 4)
     )
 
-    console.log(
+    log(
       patterns
         .map(pattern => pattern.map(x => (x ? 'x' : '-')).join(''))
         .join('\n')
@@ -201,9 +220,9 @@ async function run() {
 
     const sequences = patterns.map((pattern, patternIdx) =>
       pattern.map((hit, i) => ({
-        time: i * 1 / 16 + 0.01,
+        time: i * 1 / 16 + 0.05,
         callback: async () => {
-          const note = midi('C2') + patternIdx
+          const note = midi('C#2') + patternIdx
 
           if (hit === true) {
             device.send('noteon', {
@@ -223,11 +242,118 @@ async function run() {
     drumSequencer.play(flatten(sequences), { tempo })
   }
 
+  function playBass() {
+    if (f % 8 === 0) {
+      const shuffledChord = shuffle(chord)
+      bassline = new Array(16)
+        .fill(0)
+        .map((x, i) => shuffledChord[i % shuffledChord.length])
+        .map(note => transpose(note, 'P-8'))
+        .map(note => transpose(note, 'P-8'))
+      // bassline[0] = transpose(transpose(rootKey, 'P-8'), 'P-8')
+
+      basslineHitOrder = shuffle(new Array(16).fill(0).map((x, i) => i))
+    }
+
+    if (arousal === Arousal.PASSIVE) {
+      return
+    }
+
+    const numNotes = Math.round(relativeActivity * 16)
+    const bassHits = basslineHitOrder.slice(0, numNotes)
+    // log({ bassHits })
+    const rhythm = new Array(16).fill(0).map((x, i) => bassHits.includes(i))
+    // log({ rhythm })
+    // rhythm[0] = 1
+
+    bassSequence = rhythm.reduce(
+      (aggr, isOn, i) =>
+        isOn
+          ? [
+              ...aggr,
+              {
+                time: duration('16') * i + 0.05,
+                callback: async () => {
+                  device.send('noteon', {
+                    channel: 3,
+                    note: midi(bassline[i]),
+                    velocity: random(75, 120),
+                  })
+                  await delay(1000 * duration('32'))
+                  device.send('noteoff', {
+                    channel: 3,
+                    note: midi(bassline[i]),
+                  })
+                },
+              },
+            ]
+          : aggr,
+      []
+    )
+
+    log({ bassline })
+    log(
+      rhythm
+        .map((isOn, i) => (isOn ? bassline[i].padStart(3, ' ') + ' ' : ' ·· '))
+        .join('')
+    )
+
+    // log({ bassSequence })
+    bassSequencer.play(bassSequence, { tempo })
+  }
+
+  function playKick() {
+    if (arousal !== Arousal.ACTIVE) {
+      return
+    }
+
+    const kickPattern = kickSequences[Math.floor(f / 6) % kickSequences.length]
+    const kickSequence = kickPattern
+      .map(
+        (isOn, i) =>
+          isOn
+            ? {
+                time: duration('16') * i + 0.05,
+                callback: async () => {
+                  device.send('noteon', {
+                    channel: 4,
+                    note: midi('C2'),
+                    velocity: 100,
+                  })
+                  await delay(1)
+                  device.send('noteon', {
+                    channel: 4,
+                    note: midi('C2'),
+                  })
+                },
+              }
+            : null
+      )
+      .filter(x => x !== null)
+
+    kickSequencer.play(kickSequence, { tempo })
+  }
+
   function nextBar() {
-    updateChord()
-    playChords()
-    playSoloNotes()
-    playDrums()
+    f += 1
+
+    try {
+      const activityInfo = getActivity()
+      relativeActivity =
+        activityInfo.meta === undefined
+          ? 0
+          : activityInfo.data.length / (activityInfo.meta.numControls - 1)
+
+      updateChord()
+      playChords()
+      playSoloNotes()
+      playDrums()
+      playBass()
+      playKick()
+    } catch (err) {
+      log('An error occured during measure', f)
+      log(err)
+    }
   }
 
   await delay(100)
@@ -239,8 +365,8 @@ async function run() {
 }
 
 run().catch(err => {
-  console.log('Ouch!')
-  console.log(err)
+  log('Ouch!')
+  log(err)
 })
 
 async function exitHandler() {
