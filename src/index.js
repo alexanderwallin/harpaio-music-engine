@@ -154,7 +154,10 @@ async function run() {
 
   // Update chords
   function updateChord() {
-    if (f % 24 === 23) {
+    if (f % 1024 === 1023) {
+      log('--- reset key ---')
+      rootKey = 'C4'
+    } else if (f % 24 === 23) {
       // Perform mediantic transposition in the same mood
       log('--- change key ---')
       const medians = ['M-3', 'm-3', '3m', '3M']
