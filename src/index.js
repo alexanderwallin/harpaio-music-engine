@@ -126,20 +126,19 @@ function getChord(mood, arousal, rootKey) {
 }
 
 async function run() {
-  startSentimentQuerying(500)
-  await relayCc({
-    channels: channelsArray,
-    controlIds: resolvedControlIds,
-    device: relayDevice,
-  })
-
   let f = -1
   let rootKey = 'C4'
   let chord = [rootKey]
   let lastChord = []
+  let chordChannels = []
+  let scheduledSoloNotes = []
+  let drumSequence = []
   let bassline = []
   let basslineHitOrder = []
   let bassSequence = []
+  let kickSequence = []
+  let hihatSequence = []
+
   let mood = null
   let arousal = Arousal.PASSIVE
   let relativeActivity = 0
@@ -151,6 +150,33 @@ async function run() {
   const bassSequencer = createSequencer(startTime)
   const kickSequencer = createSequencer(startTime)
   const hihatSequencer = createSequencer(startTime)
+  const sweepSequencer = createSequencer(startTime)
+
+  startSentimentQuerying(500)
+  await relayCc({
+    channels: channelsArray,
+    controlIds: resolvedControlIds,
+    device: relayDevice,
+    onRelay: () => {
+      sweepSequencer.play([
+        {
+          time: 0.1,
+          callback: async () => {
+            console.log('sweep')
+            device.send('noteon', {
+              channel: 7,
+              note: midi('C2'),
+            })
+            await delay(100)
+            device.send('noteoff', {
+              channel: 7,
+              note: midi('C2'),
+            })
+          },
+        },
+      ])
+    },
+  })
 
   // Update chords
   function updateChord() {
@@ -165,34 +191,24 @@ async function run() {
       rootKey = Note.fromMidi(midi(transpose(rootKey, median)))
     }
 
-    const sentiment = getSentiment()
-    arousal = sentiment.arousal // eslint-disable-line
-    mood = sentiment.mood // eslint-disable-line
+    if (f % 2 === 1) {
+      const sentiment = getSentiment()
+      arousal = sentiment.arousal // eslint-disable-line
+      mood = sentiment.mood // eslint-disable-line
 
-    lastChord = [...chord]
-    chord = getChord(mood, arousal, rootKey)
+      lastChord = [...chord]
+      chord = getChord(mood, arousal, rootKey)
+    }
   }
 
   // Play chords
+  function setChords() {
+    chordChannels = arousal === Arousal.PASSIVE ? [0] : [0, 5]
+  }
+
   function playChords() {
-    if (f % 2 === 1) {
-      return
-    }
-
-    const allChordChannels = [0, 5]
-    const chordChannels = arousal === Arousal.PASSIVE ? [0] : [0, 5]
-
-    allChordChannels.forEach(channel => {
-      lastChord.forEach(note =>
-        device.send('noteoff', {
-          channel,
-          note: midi(note),
-        })
-      )
-    })
-
     chordChannels.forEach(channel => {
-      chord.forEach(note =>
+      chord.forEach(async note => {
         device.send('noteon', {
           channel,
           note: midi(note),
@@ -203,18 +219,16 @@ async function run() {
               ? random(10, 40)
               : random(60, 100),
         })
-      )
+        await delay(duration('1') * 1.95 * 1000 * 4 * tempo / 60)
+        device.send('noteoff', { channel, note: midi(note) })
+      })
     })
 
     log(`${mood} (${arousal}) - ${rootKey}: [${chord.join(', ')}]`)
   }
 
   // Play solo note
-  function playSoloNotes() {
-    if (arousal === Arousal.PASSIVE) {
-      return
-    }
-
+  function setSoloNotes() {
     const soloNotes = shuffle(chord)
       .slice(0, Math.round(relativeActivity * chord.length))
       .map(note => transpose(note, '8P'))
@@ -222,7 +236,7 @@ async function run() {
     const soloNoteDurations = soloNotes.map(() => pickRandom(['16', '8']))
     const soloNoteDelay = pickRandom(['16', '8', '4'].map(duration).concat(0))
 
-    const scheduledSoloNotes = soloNotes.map((note, i) => ({
+    scheduledSoloNotes = soloNotes.map((note, i) => ({
       time: soloNoteDurations
         .slice(0, i)
         .map(x => duration(x))
@@ -243,15 +257,15 @@ async function run() {
         })
       },
     }))
-
-    soloNoteSequencer.play(scheduledSoloNotes, { tempo })
   }
 
-  function playDrums() {
+  function playSoloNotes() {
     if (arousal === Arousal.PASSIVE) {
-      return
+      soloNoteSequencer.play(scheduledSoloNotes, { tempo })
     }
+  }
 
+  function setDrums() {
     const patterns = [0, 1, 2].map(() =>
       new Array(16).fill(0).map(() => Math.random() <= relativeActivity / 4)
     )
@@ -262,7 +276,7 @@ async function run() {
         .join('\n')
     )
 
-    const sequences = patterns.map((pattern, patternIdx) =>
+    drumSequence = patterns.map((pattern, patternIdx) =>
       pattern.map((hit, i) => ({
         time: i * 1 / 16 + 0.05,
         callback: async () => {
@@ -283,10 +297,17 @@ async function run() {
         },
       }))
     )
-    drumSequencer.play(flatten(sequences), { tempo })
   }
 
-  function playBass() {
+  function playDrums() {
+    if (arousal === Arousal.PASSIVE || relativeActivity < 0.2) {
+      return
+    }
+
+    drumSequencer.play(flatten(drumSequence), { tempo })
+  }
+
+  function setBass() {
     if (f % 8 === 0) {
       const shuffledChord = shuffle(chord)
       bassline = new Array(16)
@@ -294,21 +315,17 @@ async function run() {
         .map((x, i) => shuffledChord[i % shuffledChord.length])
         .map(note => transpose(note, 'P-8'))
         .map(note => transpose(note, 'P-8'))
-      bassline[0] = transpose(transpose(rootKey, 'P-8'), 'P-8')
-
+      bassline[0] = ['P-8', 'P-8'].reduce(
+        (note, pitch) => transpose(note, pitch),
+        chord[0]
+      )
       basslineHitOrder = shuffle(new Array(16).fill(0).map((x, i) => i))
-    }
-
-    if (arousal === Arousal.PASSIVE) {
-      return
     }
 
     const numNotes = Math.round(relativeActivity * 16)
     const bassHits = basslineHitOrder.slice(0, numNotes)
-    // log({ bassHits })
     const rhythm = new Array(16).fill(0).map((x, i) => bassHits.includes(i))
-    // log({ rhythm })
-    // rhythm[0] = 1
+    rhythm[0] = Math.random() < 0.75
 
     bassSequence = rhythm.reduce(
       (aggr, isOn, i) =>
@@ -335,30 +352,30 @@ async function run() {
       []
     )
 
-    log({ bassline })
-    log(
-      rhythm
-        .map((isOn, i) => (isOn ? bassline[i].padStart(3, ' ') + ' ' : ' ·· '))
-        .join('')
-    )
-
-    // log({ bassSequence })
-    bassSequencer.play(bassSequence, { tempo })
+    log(rhythm.map((isOn, i) => (isOn ? bassline[i] : '·')).join(' '))
   }
 
-  function playKick() {
-    if (arousal !== Arousal.ACTIVE) {
-      return
+  function playBass() {
+    if (arousal !== Arousal.PASSIVE) {
+      bassSequencer.play(bassSequence, { tempo })
     }
+  }
 
+  function setKick() {
     const kickPattern = kickSequences[Math.floor(f / 6) % kickSequences.length]
-    const kickSequence = kickPattern
+    kickSequence = kickPattern
       .map(
         (isOn, i) =>
           isOn
             ? {
                 time: duration('16') * i + 0.05,
                 callback: async () => {
+                  device.send('noteon', {
+                    channel: 9,
+                    note: midi('C2'),
+                    velocity: 100,
+                  })
+
                   device.send('noteon', {
                     channel: 4,
                     note: midi('C2'),
@@ -374,18 +391,18 @@ async function run() {
             : null
       )
       .filter(x => x !== null)
-
-    kickSequencer.play(kickSequence, { tempo })
   }
 
-  function playHihat() {
-    if (arousal !== Arousal.ACTIVE) {
-      return
+  function playKick() {
+    if (arousal === Arousal.ACTIVE) {
+      kickSequencer.play(kickSequence, { tempo })
     }
+  }
 
+  function setHihat() {
     const pattern =
       hihatPatterns[Math.floor(relativeActivity * hihatPatterns.length)]
-    const sequences = pattern
+    hihatSequence = pattern
       .map(
         (isOn, i) =>
           isOn
@@ -402,7 +419,25 @@ async function run() {
             : null
       )
       .filter(x => x)
-    hihatSequencer.play(sequences, { tempo })
+  }
+
+  function playHihat() {
+    if (arousal === Arousal.PASSIVE) {
+      return
+    }
+    if (relativeActivity < 0.1) {
+      return
+    }
+
+    hihatSequencer.play(hihatSequence, { tempo })
+  }
+
+  function sendCC() {
+    device.send('cc', {
+      channel: 0,
+      controller: 1,
+      value: Math.round(relativeActivity * 127),
+    })
   }
 
   function nextBar() {
@@ -416,6 +451,16 @@ async function run() {
           : activityInfo.data.length / (activityInfo.meta.numControls - 1)
 
       updateChord()
+
+      setChords()
+      setSoloNotes()
+      setDrums()
+      setBass()
+      setKick()
+      setHihat()
+
+      sendCC()
+
       playChords()
       playSoloNotes()
       playDrums()

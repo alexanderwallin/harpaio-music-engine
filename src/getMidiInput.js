@@ -1,5 +1,4 @@
 /* eslint new-cap: 0 */
-const inquirer = require('inquirer')
 const midi = require('midi')
 
 module.exports = async function getMidiInput(name) {

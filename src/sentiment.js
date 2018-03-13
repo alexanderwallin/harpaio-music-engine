@@ -7,8 +7,10 @@ const { Arousal, Mood } = require('./constants.js')
 let hasCalibrated = false
 let defaultMood = null
 
-let arousal = Arousal.NEUTRAL
+let arousal = Arousal.PASSIVE
 let mood = Mood.NEUTRAL
+
+let moodIterator = 0
 
 let activeControls = {}
 
@@ -28,15 +30,20 @@ async function fetchSentimentalState() {
     hasCalibrated = true
   }
 
-  const sortedMoods = values(Mood)
-  const temp = sortedMoods[defaultMood]
-  const neutralIdx = sortedMoods.indexOf(Mood.NEUTRAL)
-  sortedMoods[defaultMood] = Mood.NEUTRAL
-  sortedMoods[neutralIdx] = temp
+  // const sortedMoods = values(Mood)
+  // const temp = sortedMoods[defaultMood]
+  // const neutralIdx = sortedMoods.indexOf(Mood.NEUTRAL)
+  // sortedMoods[defaultMood] = Mood.NEUTRAL
+  // sortedMoods[neutralIdx] = temp
 
-  mood = predictionsResponse.body.data
-    ? sortedMoods[predictionsResponse.body.data[0][1]]
-    : Mood.NEUTRAL
+  // mood = predictionsResponse.body.data
+  //   ? sortedMoods[predictionsResponse.body.data[0][1]]
+  //   : Mood.NEUTRAL
+
+  if (predictionsResponse.body.data[0][1] !== defaultMood) {
+    moodIterator += 1
+  }
+  mood = values(Mood)[moodIterator % 3]
 
   activeControls = activeControlsResponse.body
 
