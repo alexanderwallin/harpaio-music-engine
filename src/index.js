@@ -98,7 +98,7 @@ async function run() {
 
   // Update chords
   function updateChord() {
-    if (f % 12 === 11) {
+    if (f % 24 === 23) {
       // Perform mediantic transposition in the same mood
       console.log('--- change key ---')
       const medians = ['M-3', 'm-3', '3m', '3M']
