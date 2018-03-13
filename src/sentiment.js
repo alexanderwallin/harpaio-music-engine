@@ -4,8 +4,12 @@ const { values } = require('lodash')
 const { API_URL } = require('./configs.js')
 const { Arousal, Mood } = require('./constants.js')
 
+let hasCalibrated = false
+let defaultMood = null
+
 let arousal = Arousal.NEUTRAL
 let mood = Mood.NEUTRAL
+
 let activeControls = {}
 
 async function fetchSentimentalState() {
@@ -18,8 +22,20 @@ async function fetchSentimentalState() {
     }),
   ])
 
+  if (hasCalibrated === false && predictionsResponse.body.data) {
+    // eslint-disable-next-line
+    defaultMood = predictionsResponse.body.data[0][1]
+    hasCalibrated = true
+  }
+
+  const sortedMoods = values(Mood)
+  const temp = sortedMoods[defaultMood]
+  const neutralIdx = sortedMoods.indexOf(Mood.NEUTRAL)
+  sortedMoods[defaultMood] = Mood.NEUTRAL
+  sortedMoods[neutralIdx] = temp
+
   mood = predictionsResponse.body.data
-    ? values(Mood)[predictionsResponse.body.data[0][1]]
+    ? sortedMoods[predictionsResponse.body.data[0][1]]
     : Mood.NEUTRAL
 
   activeControls = activeControlsResponse.body
@@ -32,9 +48,6 @@ async function fetchSentimentalState() {
   } else {
     arousal = Arousal.ACTIVE
   }
-  // arousal = activeControls.body.data ? values(Arousal)[data[0][0]] : Arousal.NEUTRAL
-
-  // console.log({ arousal, mood })
 
   return { arousal, mood }
 }
