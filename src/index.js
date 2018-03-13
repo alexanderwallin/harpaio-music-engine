@@ -1,11 +1,13 @@
 // eslint-disable-next-line
 require = require('@std/esm')(module, { mode: 'js' })
 
+const args = require('args')
 const { flatten, random, shuffle } = require('lodash')
 const duration = require('note-duration')
 const { midi, Note, transpose } = require('tonal')
 const Sequencer = require('um-sequencer').default
 
+const relayCc = require('./cc-relays.js')
 const { Arousal, Mood } = require('./constants.js')
 const device = require('./midi-device.js')
 const {
@@ -14,8 +16,23 @@ const {
   startSentimentQuerying,
 } = require('./sentiment.js')
 
-const tempo = parseInt(process.argv[2], 10) || 120
-const isLoggingEnabled = parseInt(process.argv[3], 10)
+// CLI options
+args.option('channels', 'A comma-separated list of channels to listen to')
+args.option('controls', 'A comma-separated list of control IDs to listen to')
+args.option('relay-device', 'What MIDI device to relay CC from')
+args.option('tempo', 'Tempo in bpm', 120)
+args.option('verbose', 'Log stuff to console', false)
+
+const { channels, controls, relayDevice, tempo, verbose } = args.parse(
+  process.argv
+)
+
+const channelsArray = String(channels)
+  .split(',')
+  .map(x => parseInt(x, 10))
+const resolvedControlIds = String(controls)
+  .split(',')
+  .map(x => parseInt(x, 10))
 
 const fifthIntervals = ['1P', '5P']
 const majorIntervals = ['1P', '3M', '5P']
@@ -49,6 +66,13 @@ const kickSequences = [
   [1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
 ]
 
+const hihatPatterns = [
+  [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+  [0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1],
+  [0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1],
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+]
+
 async function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -57,9 +81,9 @@ function pickRandom(arr) {
   return shuffle(arr)[0]
 }
 
-function log(...args) {
-  if (isLoggingEnabled) {
-    console.log(...args)
+function log(...restArgs) {
+  if (verbose === true) {
+    console.log(...restArgs)
   }
 }
 
@@ -103,6 +127,11 @@ function getChord(mood, arousal, rootKey) {
 
 async function run() {
   startSentimentQuerying(500)
+  await relayCc({
+    channels: channelsArray,
+    controlIds: resolvedControlIds,
+    device: relayDevice,
+  })
 
   let f = -1
   let rootKey = 'C4'
@@ -121,6 +150,7 @@ async function run() {
   const drumSequencer = createSequencer(startTime)
   const bassSequencer = createSequencer(startTime)
   const kickSequencer = createSequencer(startTime)
+  const hihatSequencer = createSequencer(startTime)
 
   // Update chords
   function updateChord() {
@@ -142,25 +172,36 @@ async function run() {
 
   // Play chords
   function playChords() {
-    lastChord.forEach(note =>
-      device.send('noteoff', {
-        channel: 0,
-        note: midi(note),
-      })
-    )
+    if (f % 2 === 1) {
+      return
+    }
 
-    chord.forEach(note =>
-      device.send('noteon', {
-        channel: 0,
-        note: midi(note),
-        velocity:
-          flatten([majorColoringIntervals, minorColoringIntervals]).includes(
-            note
-          ) === true
-            ? random(10, 40)
-            : random(60, 100),
-      })
-    )
+    const allChordChannels = [0, 5]
+    const chordChannels = arousal === Arousal.PASSIVE ? [0] : [0, 5]
+
+    allChordChannels.forEach(channel => {
+      lastChord.forEach(note =>
+        device.send('noteoff', {
+          channel,
+          note: midi(note),
+        })
+      )
+    })
+
+    chordChannels.forEach(channel => {
+      chord.forEach(note =>
+        device.send('noteon', {
+          channel,
+          note: midi(note),
+          velocity:
+            flatten([majorColoringIntervals, minorColoringIntervals]).includes(
+              note
+            ) === true
+              ? random(10, 40)
+              : random(60, 100),
+        })
+      )
+    })
 
     log(`${mood} (${arousal}) - ${rootKey}: [${chord.join(', ')}]`)
   }
@@ -250,7 +291,7 @@ async function run() {
         .map((x, i) => shuffledChord[i % shuffledChord.length])
         .map(note => transpose(note, 'P-8'))
         .map(note => transpose(note, 'P-8'))
-      // bassline[0] = transpose(transpose(rootKey, 'P-8'), 'P-8')
+      bassline[0] = transpose(transpose(rootKey, 'P-8'), 'P-8')
 
       basslineHitOrder = shuffle(new Array(16).fill(0).map((x, i) => i))
     }
@@ -334,6 +375,33 @@ async function run() {
     kickSequencer.play(kickSequence, { tempo })
   }
 
+  function playHihat() {
+    if (arousal !== Arousal.ACTIVE) {
+      return
+    }
+
+    const pattern =
+      hihatPatterns[Math.floor(relativeActivity * hihatPatterns.length)]
+    const sequences = pattern
+      .map(
+        (isOn, i) =>
+          isOn
+            ? {
+                time: duration('16') * i + 0.05,
+                callback: async () => {
+                  const channel = 6
+                  const note = midi('C2') + Math.floor(f / 12) % 2
+                  device.send('noteon', { channel, note, velocity: 100 })
+                  await delay(100)
+                  device.send('noteoff', { channel, note })
+                },
+              }
+            : null
+      )
+      .filter(x => x)
+    hihatSequencer.play(sequences, { tempo })
+  }
+
   function nextBar() {
     f += 1
 
@@ -350,6 +418,7 @@ async function run() {
       playDrums()
       playBass()
       playKick()
+      playHihat()
     } catch (err) {
       log('An error occured during measure', f)
       log(err)
