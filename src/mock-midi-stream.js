@@ -1,3 +1,4 @@
+const args = require('args')
 const { Output } = require('easymidi')
 const { random } = require('lodash')
 const readline = require('readline')
@@ -5,6 +6,9 @@ const readline = require('readline')
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
+
+args.option('verbose', 'You know what this means', false)
+const { verbose } = args.parse(process.argv)
 
 const device = new Output(`Mock MIDI stream`, true)
 const numChannels = 6
@@ -18,8 +22,10 @@ async function next() {
   const controller = random(1, numControls)
   const value = random(0, 127)
 
-  // console.log({ channel, controller })
-  console.log(`${channel} -> ${controller} : ${value}`)
+  if (verbose === true) {
+    console.log(`${channel} -> ${controller} : ${value}`)
+  }
+
   device.send('cc', { channel, controller, value })
   await delay(1)
   device.send('cc', { channel, controller, value: random(0, 127) })

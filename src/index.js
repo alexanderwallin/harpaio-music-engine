@@ -2,7 +2,7 @@
 require = require('@std/esm')(module, { mode: 'js' })
 
 const args = require('args')
-const { flatten, random, shuffle } = require('lodash')
+const { flatten, random, shuffle, values } = require('lodash')
 const duration = require('note-duration')
 const { midi, Note, transpose } = require('tonal')
 const Sequencer = require('um-sequencer').default
@@ -10,6 +10,7 @@ const Sequencer = require('um-sequencer').default
 const relayCc = require('./cc-relays.js')
 const { Arousal, Mood } = require('./constants.js')
 const device = require('./midi-device.js')
+const resolumeOsc = require('./resolume-osc.js')
 const {
   getActivity,
   getSentiment,
@@ -60,10 +61,10 @@ const moodColoringIntervals = {
 const kickSequences = [
   [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
   [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
-  [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-  [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
+  [1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+  [1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
   [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
-  [1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
+  [1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
 ]
 
 const hihatPatterns = [
@@ -149,7 +150,7 @@ async function run() {
   let kickSequence = []
   let hihatSequence = []
 
-  let mood = null
+  let mood = Mood.NEUTRAL
   let arousal = Arousal.PASSIVE
   let relativeActivity = 0
 
@@ -204,6 +205,13 @@ async function run() {
       const sentiment = getSentiment()
       arousal = sentiment.arousal // eslint-disable-line
       mood = sentiment.mood // eslint-disable-line
+
+      const oscMoodValue =
+        values(Mood).indexOf(mood) / (values(Mood).length - 1)
+      const oscArousalValue =
+        values(Arousal).indexOf(arousal) / (values(Arousal).length - 1)
+      resolumeOsc.sendValue('/composition/link1/values', oscMoodValue)
+      resolumeOsc.sendValue('/composition/link2/values', oscArousalValue)
 
       lastChord = [...chord]
       chord = getChord(mood, arousal, rootKey)
@@ -424,7 +432,11 @@ async function run() {
 
   function setHihat() {
     const pattern =
-      hihatPatterns[Math.floor(relativeActivity * hihatPatterns.length)]
+      hihatPatterns[
+        Math.floor(
+          cast(relativeActivity, 0, 0.2, 0, 1) * (hihatPatterns.length - 1)
+        )
+      ]
     hihatSequence = pattern
       .map(
         (isOn, i) =>
@@ -472,6 +484,11 @@ async function run() {
         activityInfo.meta === undefined
           ? 0
           : activityInfo.data.length / (activityInfo.meta.numControls - 1)
+
+      resolumeOsc.sendValue(
+        '/composition/link3/values',
+        cast(relativeActivity, 0, 0.3, 0, 1)
+      )
 
       // console.log(activityInfo, relativeActivity)
 
