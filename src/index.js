@@ -87,6 +87,16 @@ function log(...restArgs) {
   }
 }
 
+function cast(val, fromLower, fromUpper, toLower, toUpper) {
+  if (toUpper === toLower) {
+    return toUpper
+  }
+
+  return (
+    (val - fromLower) * (toUpper - toLower) / (fromUpper - fromLower) + toLower
+  )
+}
+
 function createSequencer(dawnOfTime) {
   return new Sequencer(() => (Date.now() - dawnOfTime) / 1000, {
     useWorker: false,
@@ -162,7 +172,6 @@ async function run() {
         {
           time: 0.1,
           callback: async () => {
-            console.log('sweep')
             device.send('noteon', {
               channel: 7,
               note: midi('C2'),
@@ -183,7 +192,7 @@ async function run() {
     if (f % 1024 === 1023) {
       log('--- reset key ---')
       rootKey = 'C4'
-    } else if (f % 24 === 23) {
+    } else if (f % 48 === 47) {
       // Perform mediantic transposition in the same mood
       log('--- change key ---')
       const medians = ['M-3', 'm-3', '3m', '3M']
@@ -191,7 +200,7 @@ async function run() {
       rootKey = Note.fromMidi(midi(transpose(rootKey, median)))
     }
 
-    if (f % 2 === 1) {
+    if (f % 4 === 3) {
       const sentiment = getSentiment()
       arousal = sentiment.arousal // eslint-disable-line
       mood = sentiment.mood // eslint-disable-line
@@ -203,26 +212,40 @@ async function run() {
 
   // Play chords
   function setChords() {
-    chordChannels = arousal === Arousal.PASSIVE ? [0] : [0, 5]
+    // chordChannels = arousal === Arousal.PASSIVE ? [0] : [0, 5]
   }
 
   function playChords() {
-    chordChannels.forEach(channel => {
-      chord.forEach(async note => {
+    chord.forEach(async note => {
+      device.send('noteon', {
+        channel: 0,
+        note: midi(note),
+        velocity:
+          flatten([majorColoringIntervals, minorColoringIntervals]).includes(
+            note
+          ) === true
+            ? random(10, 40)
+            : random(60, 100),
+      })
+      await delay(duration('1') * 1.95 * 1000 * 4 * tempo / 60)
+      device.send('noteoff', { channel: 0, note: midi(note) })
+    })
+
+    if (arousal !== Arousal.PASSIVE) {
+      const numNotes = Math.round(
+        chord.length * cast(relativeActivity, 0, 0.2, 0.1, 1)
+      )
+      log({ numNotes })
+      chord.slice(0, numNotes).forEach(async note => {
         device.send('noteon', {
-          channel,
+          channel: 5,
           note: midi(note),
-          velocity:
-            flatten([majorColoringIntervals, minorColoringIntervals]).includes(
-              note
-            ) === true
-              ? random(10, 40)
-              : random(60, 100),
+          velocity: 100,
         })
         await delay(duration('1') * 1.95 * 1000 * 4 * tempo / 60)
-        device.send('noteoff', { channel, note: midi(note) })
+        device.send('noteoff', { channel: 5, note: midi(note) })
       })
-    })
+    }
 
     log(`${mood} (${arousal}) - ${rootKey}: [${chord.join(', ')}]`)
   }
@@ -449,6 +472,8 @@ async function run() {
         activityInfo.meta === undefined
           ? 0
           : activityInfo.data.length / (activityInfo.meta.numControls - 1)
+
+      // console.log(activityInfo, relativeActivity)
 
       updateChord()
 

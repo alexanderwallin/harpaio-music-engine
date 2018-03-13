@@ -1,5 +1,5 @@
 const got = require('got')
-const { values } = require('lodash')
+const { random, values } = require('lodash')
 
 const { API_URL } = require('./configs.js')
 const { Arousal, Mood } = require('./constants.js')
@@ -40,17 +40,22 @@ async function fetchSentimentalState() {
   //   ? sortedMoods[predictionsResponse.body.data[0][1]]
   //   : Mood.NEUTRAL
 
-  if (predictionsResponse.body.data[0][1] !== defaultMood) {
-    moodIterator += 1
-  }
+  // const predictionX = random(0, predictionsResponse.body.data - 1)
+  const predicitions = predictionsResponse.body.data || []
+  predicitions.forEach(prediction => {
+    if (prediction[1] !== defaultMood) {
+      moodIterator += 1
+    }
+  })
   mood = values(Mood)[moodIterator % 3]
 
   activeControls = activeControlsResponse.body
 
-  const activeCount = activeControls.data.length
-  if (activeCount === 0) {
+  const relativeActivity =
+    activeControls.data.length / activeControls.meta.numControls
+  if (relativeActivity === 0) {
     arousal = Arousal.PASSIVE
-  } else if (activeCount < 3) {
+  } else if (relativeActivity < 0.1) {
     arousal = Arousal.NEUTRAL
   } else {
     arousal = Arousal.ACTIVE
