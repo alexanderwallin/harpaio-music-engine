@@ -4,7 +4,7 @@ require = require('@std/esm')(module, { mode: 'js' })
 const AbletonLink = require('abletonlink')
 const args = require('args')
 const spawn = require('cross-spawn')
-const { flatten, random, shuffle, values } = require('lodash')
+const { clamp, flatten, random, shuffle, values } = require('lodash')
 const duration = require('note-duration')
 const { midi, Note, transpose } = require('tonal')
 const Sequencer = require('um-sequencer').default
@@ -72,8 +72,8 @@ const kickSequences = [
 
 const hihatPatterns = [
   [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-  [0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1],
-  [0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1],
+  // [0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1],
+  // [0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1],
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 ]
 
@@ -458,12 +458,11 @@ async function run() {
   }
 
   function setHihat() {
-    const pattern =
-      hihatPatterns[
-        Math.floor(
-          cast(relativeActivity, 0, 0.2, 0, 1) * (hihatPatterns.length - 1)
-        )
-      ]
+    const hihatPatternIdx = Math.floor(
+      cast(clamp(relativeActivity, 0, 0.2), 0, 0.2, 0, 1) *
+        (hihatPatterns.length - 1)
+    )
+    const pattern = hihatPatterns[hihatPatternIdx]
     hihatSequence = pattern
       .map(
         (isOn, i) =>
