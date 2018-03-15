@@ -173,6 +173,7 @@ async function run() {
   // Sentiment and activity
   let mood = Mood.NEUTRAL
   let arousal = Arousal.PASSIVE
+  let activityData = []
   let lastActivity = Date.now()
   let relativeActivity = 0
   startSentimentQuerying(500)
@@ -513,20 +514,30 @@ async function run() {
     f += 1
 
     let didChangeMood = false
+    let didComeBack = false
 
     try {
+      // Get latest activity
       const activityInfo = getActivity()
+
+      // const lastActivityData = [...activityData]
+      activityData = activityInfo.data || []
+      console.log(activityData.length, Date.now() - lastActivity)
+      if (activityData.length > 0 && Date.now() - lastActivity > 3000) {
+        didComeBack = true
+      }
+
       relativeActivity =
         activityInfo.meta === undefined
           ? 0
-          : activityInfo.data.length / (activityInfo.meta.numControls - 1)
+          : activityData.length / (activityInfo.meta.numControls - 1)
 
       resolumeOsc.sendValue(
         '/composition/link3/values',
         cast(relativeActivity, 0, 0.3, 0, 1)
       )
 
-      if (activityInfo.data !== undefined && activityInfo.data.length > 0) {
+      if (activityData.length > 0) {
         lastActivity = Date.now()
       }
 
@@ -547,20 +558,30 @@ async function run() {
         resolumeOsc.sendValue('/composition/link2/values', oscArousalValue)
       }
 
-      if (didChangeMood === true && isReadingPoetry === false) {
-        const sentence = shuffle(['Oh... there we are', 'Nice!'])[0]
-        spawn('node', ['src/say.js', '--sentence', `'${sentence}'`])
-        console.log({ sentence })
-      }
-
       if (
-        relativeActivity === 0 &&
-        Date.now() - lastActivity > 2000 &&
+        activityData.length === 0 &&
+        Date.now() - lastActivity > 6000 &&
         isReadingPoetry === false
       ) {
         startReadingPoetry()
-      } else if (relativeActivity > 0 && isReadingPoetry === true) {
+      } else if (activityData.length > 0 && isReadingPoetry === true) {
         stopReadingPoetry()
+
+        const greeting = shuffle([
+          `Hello there`,
+          `Greetings`,
+          `Glad to have some company`,
+          `Good evening stranger`,
+        ])[0]
+        spawn('node', ['src/say.js', '--sentence', `'${greeting}'`])
+      } else if (activityData.length > 0 && didChangeMood === true) {
+        const sentence = shuffle([
+          `Oh... there we are`,
+          `Nice!`,
+          `That's what I'm talking about`,
+          `Feel the groove`,
+        ])[0]
+        spawn('node', ['src/say.js', '--sentence', `'${sentence}'`])
       }
 
       // console.log(activityInfo, relativeActivity)
