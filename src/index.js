@@ -1,6 +1,7 @@
 // eslint-disable-next-line
 require = require('@std/esm')(module, { mode: 'js' })
 
+const AbletonLink = require('abletonlink')
 const args = require('args')
 const spawn = require('cross-spawn')
 const { flatten, random, shuffle, values } = require('lodash')
@@ -138,6 +139,16 @@ function getChord(mood, arousal, rootKey) {
   return chord
 }
 
+async function syncWithAbleton() {
+  return new Promise(resolve => {
+    const link = new AbletonLink()
+    link.startUpdate(500, () => {
+      link.stopUpdate()
+      resolve(Date.now() - 0.05)
+    })
+  })
+}
+
 async function run() {
   let f = -1
   let rootKey = 'C4'
@@ -154,9 +165,11 @@ async function run() {
 
   let mood = Mood.NEUTRAL
   let arousal = Arousal.PASSIVE
+  let lastActivity = Date.now()
   let relativeActivity = 0
 
-  const startTime = Date.now()
+  const startTime = await syncWithAbleton()
+  console.log({ startTime })
   const clockSequencer = createSequencer(startTime)
   const soloNoteSequencer = createSequencer(startTime)
   const drumSequencer = createSequencer(startTime)
