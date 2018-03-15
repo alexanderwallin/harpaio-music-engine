@@ -192,16 +192,19 @@ async function run() {
 
   // Update chords
   function updateChord() {
-    if (f % 1024 === 1023) {
-      log('--- reset key ---')
-      rootKey = 'C4'
-    } else if (f % 48 === 47) {
-      // Perform mediantic transposition in the same mood
-      log('--- change key ---')
-      const medians = ['M-3', 'm-3', '3m', '3M']
-      const median = pickRandom(medians)
-      rootKey = Note.fromMidi(midi(transpose(rootKey, median)))
-    }
+    // Skip changes to harmonics for now, since staying enables use
+    // of tonal samples and other things.
+    //
+    // if (f % 1024 === 1023) {
+    //   log('--- reset key ---')
+    //   rootKey = 'C4'
+    // } else if (f % 48 === 47) {
+    //   // Perform mediantic transposition in the same mood
+    //   log('--- change key ---')
+    //   const medians = ['M-3', 'm-3', '3m', '3M']
+    //   const median = pickRandom(medians)
+    //   rootKey = Note.fromMidi(midi(transpose(rootKey, median)))
+    // }
 
     if (f % 4 === 3) {
       const sentiment = getSentiment()
