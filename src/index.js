@@ -31,6 +31,8 @@ const { channels, controls, relayDevice, tempo, verbose } = args.parse(
   process.argv
 )
 
+const NOTE_TIME_DELAY = 0.05
+
 const channelsArray = String(channels)
   .split(',')
   .map(x => parseInt(x, 10))
@@ -101,8 +103,8 @@ function cast(val, fromLower, fromUpper, toLower, toUpper) {
   )
 }
 
-function createSequencer(dawnOfTime) {
-  return new Sequencer(() => (Date.now() - dawnOfTime) / 1000, {
+function createSequencer(getCurrentTime) {
+  return new Sequencer(getCurrentTime, {
     useWorker: false,
   })
 }
@@ -139,12 +141,14 @@ function getChord(mood, arousal, rootKey) {
   return chord
 }
 
+let lastAbletonBeat = 0
+
 async function syncWithAbleton() {
   return new Promise(resolve => {
     const link = new AbletonLink()
-    link.startUpdate(500, () => {
-      link.stopUpdate()
-      resolve(Date.now() + 0.05 * (tempo / 60))
+    link.startUpdate(25, beat => {
+      lastAbletonBeat = beat
+      resolve()
     })
   })
 }
@@ -168,15 +172,18 @@ async function run() {
   let lastActivity = Date.now()
   let relativeActivity = 0
 
-  const startTime = await syncWithAbleton()
-  console.log({ startTime })
-  const clockSequencer = createSequencer(startTime)
-  const soloNoteSequencer = createSequencer(startTime)
-  const drumSequencer = createSequencer(startTime)
-  const bassSequencer = createSequencer(startTime)
-  const kickSequencer = createSequencer(startTime)
-  const hihatSequencer = createSequencer(startTime)
-  const sweepSequencer = createSequencer(startTime)
+  // const startTime = await syncWithAbleton()
+  await syncWithAbleton()
+  console.log('synced')
+  const getCurrentTime = () => lastAbletonBeat * 60 / tempo
+
+  const clockSequencer = createSequencer(getCurrentTime)
+  const soloNoteSequencer = createSequencer(getCurrentTime)
+  const drumSequencer = createSequencer(getCurrentTime)
+  const bassSequencer = createSequencer(getCurrentTime)
+  const kickSequencer = createSequencer(getCurrentTime)
+  const hihatSequencer = createSequencer(getCurrentTime)
+  const sweepSequencer = createSequencer(getCurrentTime)
 
   startSentimentQuerying(500)
   await relayCc({
@@ -298,7 +305,7 @@ async function run() {
       time: soloNoteDurations
         .slice(0, i)
         .map(x => duration(x))
-        .reduce((aggr, x) => aggr + x, soloNoteDelay + 0.05),
+        .reduce((aggr, x) => aggr + x, soloNoteDelay + NOTE_TIME_DELAY),
       callback: async () => {
         device.send('noteon', {
           channel: 1,
@@ -336,7 +343,7 @@ async function run() {
 
     drumSequence = patterns.map((pattern, patternIdx) =>
       pattern.map((hit, i) => ({
-        time: i * 1 / 16 + 0.05,
+        time: i * duration('16') + NOTE_TIME_DELAY,
         callback: async () => {
           const note = midi('C#2') + patternIdx
 
@@ -391,7 +398,7 @@ async function run() {
           ? [
               ...aggr,
               {
-                time: duration('16') * i + 0.05,
+                time: duration('16') * i + NOTE_TIME_DELAY,
                 callback: async () => {
                   device.send('noteon', {
                     channel: 3,
@@ -426,7 +433,7 @@ async function run() {
         (isOn, i) =>
           isOn
             ? {
-                time: duration('16') * i + 0.05,
+                time: duration('16') * i + NOTE_TIME_DELAY,
                 callback: async () => {
                   device.send('noteon', {
                     channel: 9,
@@ -468,7 +475,7 @@ async function run() {
         (isOn, i) =>
           isOn
             ? {
-                time: duration('16') * i + 0.05,
+                time: duration('16') * i + NOTE_TIME_DELAY,
                 callback: async () => {
                   const channel = 6
                   const note = midi('C2') + Math.floor(f / 12) % 2
