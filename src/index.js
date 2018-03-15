@@ -221,14 +221,14 @@ async function run() {
       lastChord = [...chord]
       chord = getChord(mood, arousal, rootKey)
 
-      const sentence = getSentence(Mood.NEUTRAL)
+      // const sentence = getSentence(Mood.NEUTRAL)
       // say(sentence, { pitch: '-100%' }).then(() => console.log('did say'))
-      spawn(
-        'node',
-        ['src/say.js', '--sentence', `'${sentence}'`, '--pitch', `10%`]
-        // { detached: true }
-      )
-      console.log({ sentence })
+      // spawn(
+      //   'node',
+      //   ['src/say.js', '--sentence', `'${sentence}'`, '--pitch', `10%`]
+      //   // { detached: true }
+      // )
+      // console.log({ sentence })
     }
   }
 
