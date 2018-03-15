@@ -416,7 +416,11 @@ function createPoet(modelJson, inputText) {
   return {
     predict: numChars => {
       max_chars_gen = numChars
-      return predictSentence(model, true, sample_softmax_temperature)
+      const sentence = predictSentence(model, true, sample_softmax_temperature)
+        .trim()
+        .replace(/\s\w$/, '')
+        .replace(/(of|the)$/, '')
+      return sentence
     },
   }
 }
