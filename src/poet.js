@@ -6,6 +6,7 @@ const { Mood } = require('./constants.js')
 
 const modelJson_AnEverydayGirl = require('./models/learn-text-r-model-aneverydaygirl-1521032825508.json')
 const modelJson_Frankenstein = require('./models/learn-text-r-model-frankenstein-1521033647318.json')
+const modelJson_InspirationalQuotes = require('./models/learn-text-r-model-inspirational-1521130303308.json')
 const modelJson_SenseAndSensibility = require('./models/learn-text-r-model-aneverydaygirl-1521032825508.json')
 
 const inputText_AnEverydayGirl = fs.readFileSync(
@@ -14,6 +15,10 @@ const inputText_AnEverydayGirl = fs.readFileSync(
 )
 const inputText_Frankenstein = fs.readFileSync(
   path.resolve(__dirname, './data/Frankenstein.txt'),
+  'utf8'
+)
+const inputText_InspirationalQuotes = fs.readFileSync(
+  path.resolve(__dirname, './data/inspirational-quotes.txt'),
   'utf8'
 )
 const inputText_SenseAndSensibility = fs.readFileSync(
@@ -426,18 +431,25 @@ const poetPositive = createPoet(
 )
 const poetNegative = createPoet(modelJson_Frankenstein, inputText_Frankenstein)
 
-function getSentence(mood, numChars = 40) {
-  if (mood === Mood.NEUTRAL) {
-    return poetNeutral.predict(numChars)
-  }
-  if (mood === Mood.POSITIVE) {
-    return poetPositive.predict(numChars)
-  }
-  if (mood === Mood.NEGATIVE) {
-    return poetNegative.predict(numChars)
-  }
+const poetInspirational = createPoet(
+  modelJson_InspirationalQuotes,
+  inputText_InspirationalQuotes
+)
 
-  return null
+function getSentence(mood, numChars = 40) {
+  // if (mood === Mood.NEUTRAL) {
+  //   return poetNeutral.predict(numChars)
+  // }
+  // if (mood === Mood.POSITIVE) {
+  //   return poetPositive.predict(numChars)
+  // }
+  // if (mood === Mood.NEGATIVE) {
+  //   return poetNegative.predict(numChars)
+  // }
+
+  // return null
+
+  return poetInspirational.predict(numChars)
 }
 
 module.exports.getSentence = getSentence
