@@ -1,5 +1,5 @@
 const got = require('got')
-const { random, values } = require('lodash')
+const { values } = require('lodash')
 
 const { API_URL } = require('./configs.js')
 const { Arousal, Mood } = require('./constants.js')

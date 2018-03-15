@@ -2,6 +2,7 @@
 require = require('@std/esm')(module, { mode: 'js' })
 
 const args = require('args')
+const spawn = require('cross-spawn')
 const { flatten, random, shuffle, values } = require('lodash')
 const duration = require('note-duration')
 const { midi, Note, transpose } = require('tonal')
@@ -10,6 +11,7 @@ const Sequencer = require('um-sequencer').default
 const relayCc = require('./cc-relays.js')
 const { Arousal, Mood } = require('./constants.js')
 const device = require('./midi-device.js')
+const { getSentence } = require('./poet.js')
 const resolumeOsc = require('./resolume-osc.js')
 const {
   getActivity,
@@ -215,6 +217,15 @@ async function run() {
 
       lastChord = [...chord]
       chord = getChord(mood, arousal, rootKey)
+
+      const sentence = getSentence(Mood.NEUTRAL)
+      // say(sentence, { pitch: '-100%' }).then(() => console.log('did say'))
+      spawn(
+        'node',
+        ['src/say.js', '--sentence', `'${sentence}'`, '--pitch', `10%`]
+        // { detached: true }
+      )
+      console.log({ sentence })
     }
   }
 
