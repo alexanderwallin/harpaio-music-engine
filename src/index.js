@@ -504,6 +504,10 @@ async function run() {
         cast(relativeActivity, 0, 0.3, 0, 1)
       )
 
+      if (activityInfo.data !== undefined && activityInfo.data.length > 0) {
+        lastActivity = Date.now()
+      }
+
       // console.log(activityInfo, relativeActivity)
 
       updateChord()
