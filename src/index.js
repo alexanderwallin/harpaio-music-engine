@@ -32,6 +32,7 @@ const { channels, controls, relayDevice, tempo, verbose } = args.parse(
 )
 
 const NOTE_TIME_DELAY = 0.05
+const NUM_BARS_BETWEEN_CHORDS = 4
 
 const channelsArray = String(channels)
   .split(',')
@@ -154,10 +155,12 @@ async function syncWithAbleton() {
 }
 
 async function run() {
+  // Frame
   let f = -1
+
+  // Notes and patterns
   let rootKey = 'C4'
   let chord = [rootKey]
-  let lastChord = []
   let chordChannels = []
   let scheduledSoloNotes = []
   let drumSequence = []
@@ -167,14 +170,15 @@ async function run() {
   let kickSequence = []
   let hihatSequence = []
 
+  // Sentiment and activity
   let mood = Mood.NEUTRAL
   let arousal = Arousal.PASSIVE
   let lastActivity = Date.now()
   let relativeActivity = 0
+  startSentimentQuerying(500)
 
-  // const startTime = await syncWithAbleton()
+  // Sequencing
   await syncWithAbleton()
-  console.log('synced')
   const getCurrentTime = () => lastAbletonBeat * 60 / tempo
 
   const clockSequencer = createSequencer(getCurrentTime)
@@ -185,7 +189,7 @@ async function run() {
   const hihatSequencer = createSequencer(getCurrentTime)
   const sweepSequencer = createSequencer(getCurrentTime)
 
-  startSentimentQuerying(500)
+  // CC relaying
   await relayCc({
     channels: channelsArray,
     controlIds: resolvedControlIds,
@@ -226,30 +230,7 @@ async function run() {
     //   rootKey = Note.fromMidi(midi(transpose(rootKey, median)))
     // }
 
-    if (f % 4 === 3) {
-      const sentiment = getSentiment()
-      arousal = sentiment.arousal // eslint-disable-line
-      mood = sentiment.mood // eslint-disable-line
-
-      const oscMoodValue =
-        values(Mood).indexOf(mood) / (values(Mood).length - 1)
-      const oscArousalValue =
-        values(Arousal).indexOf(arousal) / (values(Arousal).length - 1)
-      resolumeOsc.sendValue('/composition/link1/values', oscMoodValue)
-      resolumeOsc.sendValue('/composition/link2/values', oscArousalValue)
-
-      lastChord = [...chord]
-      chord = getChord(mood, arousal, rootKey)
-
-      // const sentence = getSentence(Mood.NEUTRAL)
-      // say(sentence, { pitch: '-100%' }).then(() => console.log('did say'))
-      // spawn(
-      //   'node',
-      //   ['src/say.js', '--sentence', `'${sentence}'`, '--pitch', `10%`]
-      //   // { detached: true }
-      // )
-      // console.log({ sentence })
-    }
+    chord = getChord(mood, arousal, rootKey)
   }
 
   // Play chords
@@ -269,7 +250,7 @@ async function run() {
             ? random(10, 40)
             : random(60, 100),
       })
-      await delay(duration('1') * 1.95 * 1000 * 4 * tempo / 60)
+      await delay(NUM_BARS_BETWEEN_CHORDS * 3.95 * 60 * 1000 / tempo)
       device.send('noteoff', { channel: 0, note: midi(note) })
     })
 
@@ -508,8 +489,30 @@ async function run() {
     })
   }
 
+  /**
+   * Poetry
+   */
+  let isReadingPoetry = false
+  let poetryTimer = null
+  function startReadingPoetry() {
+    isReadingPoetry = true
+
+    poetryTimer = setInterval(() => {
+      const sentence = getSentence(mood)
+      spawn('node', ['src/say.js', '--sentence', `'${sentence}'`])
+      console.log({ sentence })
+    }, 15000)
+  }
+
+  function stopReadingPoetry() {
+    isReadingPoetry = false
+    clearInterval(poetryTimer)
+  }
+
   function nextBar() {
     f += 1
+
+    let didChangeMood = false
 
     try {
       const activityInfo = getActivity()
@@ -527,9 +530,44 @@ async function run() {
         lastActivity = Date.now()
       }
 
+      if (f % NUM_BARS_BETWEEN_CHORDS === 0) {
+        const sentiment = getSentiment()
+        if (mood !== sentiment.mood) {
+          didChangeMood = true
+        }
+
+        arousal = sentiment.arousal // eslint-disable-line
+        mood = sentiment.mood // eslint-disable-line
+
+        const oscMoodValue =
+          values(Mood).indexOf(mood) / (values(Mood).length - 1)
+        const oscArousalValue =
+          values(Arousal).indexOf(arousal) / (values(Arousal).length - 1)
+        resolumeOsc.sendValue('/composition/link1/values', oscMoodValue)
+        resolumeOsc.sendValue('/composition/link2/values', oscArousalValue)
+      }
+
+      if (didChangeMood === true && isReadingPoetry === false) {
+        const sentence = shuffle(['Oh... there we are', 'Nice!'])[0]
+        spawn('node', ['src/say.js', '--sentence', `'${sentence}'`])
+        console.log({ sentence })
+      }
+
+      if (
+        relativeActivity === 0 &&
+        Date.now() - lastActivity > 2000 &&
+        isReadingPoetry === false
+      ) {
+        startReadingPoetry()
+      } else if (relativeActivity > 0 && isReadingPoetry === true) {
+        stopReadingPoetry()
+      }
+
       // console.log(activityInfo, relativeActivity)
 
-      updateChord()
+      if (f % NUM_BARS_BETWEEN_CHORDS === 0) {
+        updateChord()
+      }
 
       setChords()
       setSoloNotes()
@@ -540,7 +578,9 @@ async function run() {
 
       sendCC()
 
-      playChords()
+      if (f % NUM_BARS_BETWEEN_CHORDS === 0) {
+        playChords()
+      }
       playSoloNotes()
       playDrums()
       playBass()

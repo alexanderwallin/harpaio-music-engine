@@ -2,7 +2,7 @@ require('isomorphic-fetch')
 const Speaker = require('speaker')
 const TextToSpeech = require('watson-developer-cloud/text-to-speech/v1')
 
-async function say(sentence, { pitch }) {
+async function say(sentence) {
   return new Promise((resolve, reject) => {
     const speaker = new Speaker({
       channels: 1,
@@ -20,12 +20,12 @@ async function say(sentence, { pitch }) {
     <speak>
       <voice-transformation
         type="Custom"
-        pitch="${pitch}"
-        pitch_range="100%"
-        global_tenstion="0%"
+        pitch="-100%"
+        pitch_range="0%"
+        global_tenstion="-100%"
         rate="-100%"
-        timbre="Sunrise"
-        timbre_extent="100%"
+        timbre="Breeze"
+        timbre_extent="50%"
       >
         ${sentence}
       </voice-transformation>
@@ -35,6 +35,7 @@ async function say(sentence, { pitch }) {
     // const voice = 'en-US_AllisonVoice'
     // const voice = 'en-US_LisaVoice'
     const voice = 'en-US_MichaelVoice'
+
     const accept = 'audio/wav'
 
     tts
