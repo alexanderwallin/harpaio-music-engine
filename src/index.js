@@ -144,7 +144,7 @@ async function syncWithAbleton() {
     const link = new AbletonLink()
     link.startUpdate(500, () => {
       link.stopUpdate()
-      resolve(Date.now() - 0.05)
+      resolve(Date.now() + 0.05 * (tempo / 60))
     })
   })
 }
