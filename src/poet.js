@@ -28,7 +28,7 @@ const inputText_SenseAndSensibility = fs.readFileSync(
 
 function createPoet(modelJson, inputText) {
   // prediction params
-  let sample_softmax_temperature = 0.3 // how peaky model predictions should be
+  let sample_softmax_temperature = 0.4 // how peaky model predictions should be
   let max_chars_gen = 50 // max length of generated sentences
 
   // various global var inits
