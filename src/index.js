@@ -318,7 +318,7 @@ async function run() {
   }
 
   function playSoloNotes() {
-    if (arousal === Arousal.PASSIVE) {
+    if (arousal !== Arousal.PASSIVE) {
       soloNoteSequencer.play(scheduledSoloNotes, { tempo })
     }
   }
