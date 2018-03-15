@@ -1,4 +1,5 @@
 require('isomorphic-fetch')
+const { shuffle } = require('lodash')
 const Speaker = require('speaker')
 const TextToSpeech = require('watson-developer-cloud/text-to-speech/v1')
 
@@ -32,9 +33,11 @@ async function say(sentence) {
     </speak>
     `
 
-    // const voice = 'en-US_AllisonVoice'
-    // const voice = 'en-US_LisaVoice'
-    const voice = 'en-US_MichaelVoice'
+    const voice = shuffle([
+      'en-US_AllisonVoice',
+      'en-US_LisaVoice',
+      'en-US_MichaelVoice',
+    ])[0]
 
     const accept = 'audio/wav'
 
