@@ -14,7 +14,7 @@ let moodIterator = 0
 
 let activeControls = {}
 
-async function fetchSentimentalState() {
+async function fetchSentimentalState({ activityPeak }) {
   const [predictionsResponse, activeControlsResponse] = await Promise.all([
     await got(`${API_URL}/channel-predictions`, {
       json: true,
@@ -55,7 +55,7 @@ async function fetchSentimentalState() {
     activeControls.data.length / activeControls.meta.numControls
   if (relativeActivity === 0) {
     arousal = Arousal.PASSIVE
-  } else if (relativeActivity < 0.1) {
+  } else if (relativeActivity < activityPeak) {
     arousal = Arousal.NEUTRAL
   } else {
     arousal = Arousal.ACTIVE
@@ -64,8 +64,8 @@ async function fetchSentimentalState() {
   return { arousal, mood }
 }
 
-function startSentimentQuerying(intervalMs) {
-  setInterval(fetchSentimentalState, intervalMs)
+function startSentimentQuerying(intervalMs, { activityPeak }) {
+  setInterval(() => fetchSentimentalState({ activityPeak }), intervalMs)
 }
 
 function getSentiment() {

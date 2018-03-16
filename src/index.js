@@ -4,14 +4,20 @@ require = require('@std/esm')(module, { mode: 'js' })
 const AbletonLink = require('abletonlink')
 const args = require('args')
 const spawn = require('cross-spawn')
+const { Output } = require('easymidi')
 const { clamp, flatten, random, shuffle, values } = require('lodash')
 const duration = require('note-duration')
 const { midi, Note, transpose } = require('tonal')
 const Sequencer = require('um-sequencer').default
 
-const relayCc = require('./cc-relays.js')
-const { Arousal, Mood } = require('./constants.js')
-const device = require('./midi-device.js')
+const { relayCc, relayOutputDevice } = require('./cc-relays.js')
+const {
+  Arousal,
+  Mood,
+  EngineCcControl,
+  InstrumentChannel,
+  CcRelayChannel,
+} = require('./constants.js')
 const { getSentence } = require('./poet.js')
 const resolumeOsc = require('./resolume-osc.js')
 const {
@@ -21,18 +27,30 @@ const {
 } = require('./sentiment.js')
 
 // CLI options
+args.option(
+  'arousal-peak',
+  'The relative amount of active controls that is considered max arousal'
+)
 args.option('channels', 'A comma-separated list of channels to listen to')
 args.option('controls', 'A comma-separated list of control IDs to listen to')
 args.option('relay-device', 'What MIDI device to relay CC from')
 args.option('tempo', 'Tempo in bpm', 120)
 args.option('verbose', 'Log stuff to console', false)
 
-const { channels, controls, relayDevice, tempo, verbose } = args.parse(
-  process.argv
-)
+const {
+  arousalPeak,
+  channels,
+  controls,
+  relayDevice,
+  tempo,
+  verbose,
+} = args.parse(process.argv)
 
 const NOTE_TIME_DELAY = 0.05
 const NUM_BARS_BETWEEN_CHORDS = 4
+const AROUSAL_PEAK = parseFloat(arousalPeak)
+
+const musicGenerator = new Output(`Sonar Music Generator`, true)
 
 const channelsArray = String(channels)
   .split(',')
@@ -176,7 +194,7 @@ async function run() {
   let activityData = []
   let lastActivity = Date.now()
   let relativeActivity = 0
-  startSentimentQuerying(500)
+  startSentimentQuerying(500, { activityPeak: AROUSAL_PEAK })
 
   // Sequencing
   await syncWithAbleton()
@@ -195,17 +213,19 @@ async function run() {
     channels: channelsArray,
     controlIds: resolvedControlIds,
     device: relayDevice,
-    onRelay: () => {
+    onRelay: packet => {
+      console.log('onRelay', packet)
       sweepSequencer.play([
         {
           time: 0.1,
           callback: async () => {
-            device.send('noteon', {
+            musicGenerator.send('noteon', {
               channel: 7,
               note: midi('C2'),
+              velocity: 100,
             })
             await delay(100)
-            device.send('noteoff', {
+            musicGenerator.send('noteoff', {
               channel: 7,
               note: midi('C2'),
             })
@@ -241,8 +261,8 @@ async function run() {
 
   function playChords() {
     chord.forEach(async note => {
-      device.send('noteon', {
-        channel: 0,
+      musicGenerator.send('noteon', {
+        channel: InstrumentChannel.PAD,
         note: midi(note),
         velocity:
           flatten([majorColoringIntervals, minorColoringIntervals]).includes(
@@ -252,22 +272,35 @@ async function run() {
             : random(60, 100),
       })
       await delay(NUM_BARS_BETWEEN_CHORDS * 3.95 * 60 * 1000 / tempo)
-      device.send('noteoff', { channel: 0, note: midi(note) })
+      musicGenerator.send('noteoff', {
+        channel: InstrumentChannel.PAD,
+        note: midi(note),
+      })
     })
 
     if (arousal !== Arousal.PASSIVE) {
       const numNotes = Math.round(
-        chord.length * cast(relativeActivity, 0, 0.2, 0.1, 1)
+        chord.length *
+          cast(
+            clamp(relativeActivity, 0, AROUSAL_PEAK),
+            0,
+            AROUSAL_PEAK,
+            0.1,
+            1
+          )
       )
       log({ numNotes })
       chord.slice(0, numNotes).forEach(async note => {
-        device.send('noteon', {
-          channel: 5,
+        musicGenerator.send('noteon', {
+          channel: InstrumentChannel.ARPEGGIATOR,
           note: midi(note),
           velocity: 100,
         })
         await delay(duration('1') * 1.95 * 1000 * 4 * tempo / 60)
-        device.send('noteoff', { channel: 5, note: midi(note) })
+        musicGenerator.send('noteoff', {
+          channel: InstrumentChannel.ARPEGGIATOR,
+          note: midi(note),
+        })
       })
     }
 
@@ -289,8 +322,8 @@ async function run() {
         .map(x => duration(x))
         .reduce((aggr, x) => aggr + x, soloNoteDelay + NOTE_TIME_DELAY),
       callback: async () => {
-        device.send('noteon', {
-          channel: 1,
+        musicGenerator.send('noteon', {
+          channel: InstrumentChannel.MELODY,
           note: midi(note),
           velocity: random(50, 100),
         })
@@ -298,8 +331,8 @@ async function run() {
         log(`+ ${note}`)
 
         await delay(1000 * (60 / tempo) / 8)
-        device.send('noteoff', {
-          channel: 1,
+        musicGenerator.send('noteoff', {
+          channel: InstrumentChannel.MELODY,
           note: midi(note),
         })
       },
@@ -330,14 +363,14 @@ async function run() {
           const note = midi('C#2') + patternIdx
 
           if (hit === true) {
-            device.send('noteon', {
-              channel: 2,
+            musicGenerator.send('noteon', {
+              channel: InstrumentChannel.DRUMS,
               note,
               velocity: random(20, 100),
             })
             await delay(1)
-            device.send('noteoff', {
-              channel: 2,
+            musicGenerator.send('noteoff', {
+              channel: InstrumentChannel.DRUMS,
               note,
             })
           }
@@ -347,7 +380,7 @@ async function run() {
   }
 
   function playDrums() {
-    if (arousal === Arousal.PASSIVE || relativeActivity < 0.2) {
+    if (arousal === Arousal.PASSIVE || relativeActivity < AROUSAL_PEAK / 3) {
       return
     }
 
@@ -382,14 +415,14 @@ async function run() {
               {
                 time: duration('16') * i + NOTE_TIME_DELAY,
                 callback: async () => {
-                  device.send('noteon', {
-                    channel: 3,
+                  musicGenerator.send('noteon', {
+                    channel: InstrumentChannel.BASS,
                     note: midi(bassline[i]),
                     velocity: random(75, 120),
                   })
                   await delay(1000 * duration('32'))
-                  device.send('noteoff', {
-                    channel: 3,
+                  musicGenerator.send('noteoff', {
+                    channel: InstrumentChannel.BASS,
                     note: midi(bassline[i]),
                   })
                 },
@@ -403,6 +436,7 @@ async function run() {
   }
 
   function playBass() {
+    console.log('playBass', arousal)
     if (arousal !== Arousal.PASSIVE) {
       bassSequencer.play(bassSequence, { tempo })
     }
@@ -417,20 +451,14 @@ async function run() {
             ? {
                 time: duration('16') * i + NOTE_TIME_DELAY,
                 callback: async () => {
-                  device.send('noteon', {
-                    channel: 9,
-                    note: midi('C2'),
-                    velocity: 100,
-                  })
-
-                  device.send('noteon', {
-                    channel: 4,
+                  musicGenerator.send('noteon', {
+                    channel: InstrumentChannel.KICK,
                     note: midi('C2'),
                     velocity: 100,
                   })
                   await delay(1)
-                  device.send('noteon', {
-                    channel: 4,
+                  musicGenerator.send('noteon', {
+                    channel: InstrumentChannel.KICK,
                     note: midi('C2'),
                   })
                 },
@@ -448,9 +476,10 @@ async function run() {
 
   function setHihat() {
     const hihatPatternIdx = Math.floor(
-      cast(clamp(relativeActivity, 0, 0.2), 0, 0.2, 0, 1) *
+      cast(clamp(relativeActivity, 0, AROUSAL_PEAK), 0, AROUSAL_PEAK, 0, 1) *
         (hihatPatterns.length - 1)
     )
+    console.log({ hihatPatternIdx })
     const pattern = hihatPatterns[hihatPatternIdx]
     hihatSequence = pattern
       .map(
@@ -459,11 +488,17 @@ async function run() {
             ? {
                 time: duration('16') * i + NOTE_TIME_DELAY,
                 callback: async () => {
-                  const channel = 6
                   const note = midi('C2') + Math.floor(f / 12) % 2
-                  device.send('noteon', { channel, note, velocity: 100 })
+                  musicGenerator.send('noteon', {
+                    channel: InstrumentChannel.HIHAT,
+                    note,
+                    velocity: 100,
+                  })
                   await delay(100)
-                  device.send('noteoff', { channel, note })
+                  musicGenerator.send('noteoff', {
+                    channel: InstrumentChannel.HIHAT,
+                    note,
+                  })
                 },
               }
             : null
@@ -482,11 +517,22 @@ async function run() {
     hihatSequencer.play(hihatSequence, { tempo })
   }
 
-  function sendCC() {
-    device.send('cc', {
-      channel: 0,
-      controller: 1,
-      value: Math.round(relativeActivity * 127),
+  function sendStateCC() {
+    relayOutputDevice.send('cc', {
+      channel: CcRelayChannel.STATE,
+      controller: EngineCcControl.MOOD,
+      value: mood === Mood.NEGATIVE ? 127 : 0,
+    })
+
+    const ArousalCcValue = {
+      [Arousal.PASSIVE]: 0,
+      [Arousal.NEUTRAL]: 64,
+      [Arousal.ACTIVE]: 127,
+    }
+    relayOutputDevice.send('cc', {
+      channel: CcRelayChannel.STATE,
+      controller: EngineCcControl.AROUSAL,
+      value: ArousalCcValue[arousal],
     })
   }
 
@@ -520,9 +566,7 @@ async function run() {
       // Get latest activity
       const activityInfo = getActivity()
 
-      // const lastActivityData = [...activityData]
       activityData = activityInfo.data || []
-      console.log(activityData.length, Date.now() - lastActivity)
       if (activityData.length > 0 && Date.now() - lastActivity > 3000) {
         didComeBack = true
       }
@@ -584,8 +628,6 @@ async function run() {
         spawn('node', ['src/say.js', '--sentence', `'${sentence}'`])
       }
 
-      // console.log(activityInfo, relativeActivity)
-
       if (f % NUM_BARS_BETWEEN_CHORDS === 0) {
         updateChord()
       }
@@ -597,7 +639,7 @@ async function run() {
       setKick()
       setHihat()
 
-      sendCC()
+      sendStateCC()
 
       if (f % NUM_BARS_BETWEEN_CHORDS === 0) {
         playChords()
@@ -627,7 +669,7 @@ run().catch(err => {
 })
 
 async function exitHandler() {
-  device.close()
+  musicGenerator.close()
   await delay(500)
   process.exit(0)
 }

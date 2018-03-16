@@ -2,44 +2,34 @@ const { Output } = require('easymidi')
 
 const getMidiInput = require('./getMidiInput.js')
 
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
+const relayOutputDevice = new Output(`Sonar Controller Relay`, true)
 
-const outputDevice = new Output(`Virtual JS Device v1 CC`, true)
-let isSweeping = false
-
-async function run({ channels, controlIds, device, onRelay }) {
+async function relayCc({ channels, controlIds, device, onRelay }) {
   const midiInput = await getMidiInput(device)
 
-  if (midiInput !== null) {
-    midiInput.on(
-      'message',
-      async (deltaTime, [command, inputControlId, value]) => {
-        if (176 <= command && command < 192) {
-          const inputChannel = command - 176
+  const onMidiMessage = (deltaTime, [command, inputControlId, value]) => {
+    if (176 <= command && command < 192) {
+      const inputChannel = command - 176
 
-          if (
-            channels.includes(inputChannel + 1) === true &&
-            controlIds.includes(inputControlId)
-          ) {
-            outputDevice.send('cc', {
-              channel: 15,
-              controller: inputChannel * 16 + inputControlId,
-              value,
-            })
-
-            if (isSweeping === false) {
-              isSweeping = true
-              onRelay()
-              await delay(1000)
-              isSweeping = false
-            }
-          }
+      if (
+        channels.includes(inputChannel) === true &&
+        controlIds.includes(inputControlId)
+      ) {
+        const message = {
+          channel: inputChannel,
+          controller: inputControlId,
+          value,
         }
+        relayOutputDevice.send('cc', message)
+        onRelay(message)
       }
-    )
+    }
+  }
+
+  if (midiInput !== null) {
+    midiInput.on('message', onMidiMessage)
   }
 }
 
-module.exports = run
+module.exports.relayOutputDevice = relayOutputDevice
+module.exports.relayCc = relayCc
