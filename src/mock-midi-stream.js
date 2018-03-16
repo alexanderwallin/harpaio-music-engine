@@ -7,11 +7,11 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+args.option('num-channels', 'Number of channels', 16)
 args.option('verbose', 'You know what this means', false)
-const { verbose } = args.parse(process.argv)
+const { numChannels, verbose } = args.parse(process.argv)
 
 const device = new Output(`Mock MIDI stream`, true)
-const numChannels = 6
 const numControls = 16
 
 const delays = [30, 40, 60, 80, 100, 200, 400, 800, 1200]
@@ -22,7 +22,7 @@ let isEnabled = true
 async function next() {
   if (isEnabled === true) {
     const channel = random(0, numChannels - 1)
-    const controller = random(1, numControls)
+    const controller = random(0, numControls - 1)
     const value = random(0, 127)
 
     if (verbose === true) {
