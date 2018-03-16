@@ -187,6 +187,7 @@ async function run() {
   let bassSequence = []
   let kickSequence = []
   let hihatSequence = []
+  let isSweeping = false
 
   // Sentiment and activity
   let mood = Mood.NEUTRAL
@@ -206,32 +207,22 @@ async function run() {
   const bassSequencer = createSequencer(getCurrentTime)
   const kickSequencer = createSequencer(getCurrentTime)
   const hihatSequencer = createSequencer(getCurrentTime)
-  const sweepSequencer = createSequencer(getCurrentTime)
 
   // CC relaying
   await relayCc({
     channels: channelsArray,
     controlIds: resolvedControlIds,
     device: relayDevice,
-    onRelay: packet => {
+    onRelay: async packet => {
       console.log('onRelay', packet)
-      sweepSequencer.play([
-        {
-          time: 0.1,
-          callback: async () => {
-            musicGenerator.send('noteon', {
-              channel: 7,
-              note: midi('C2'),
-              velocity: 100,
-            })
-            await delay(100)
-            musicGenerator.send('noteoff', {
-              channel: 7,
-              note: midi('C2'),
-            })
-          },
-        },
-      ])
+
+      // Play a swell if we have come back from idle
+      if (arousal === Arousal.PASSIVE && isSweeping === false) {
+        triggerSwells()
+        isSweeping = true
+        await delay(2000)
+        isSweeping = false
+      }
     },
   })
 
@@ -271,7 +262,7 @@ async function run() {
             ? random(10, 40)
             : random(60, 100),
       })
-      await delay(NUM_BARS_BETWEEN_CHORDS * 3.95 * 60 * 1000 / tempo)
+      await delay(NUM_BARS_BETWEEN_CHORDS / 2 * 3.95 * 60 * 1000 / tempo)
       musicGenerator.send('noteoff', {
         channel: InstrumentChannel.PAD,
         note: midi(note),
@@ -556,6 +547,26 @@ async function run() {
     clearInterval(poetryTimer)
   }
 
+  /**
+   * Swells
+   */
+  async function triggerSwells() {
+    console.log('triggerSwells()')
+    musicGenerator.send('noteon', {
+      channel: InstrumentChannel.SWELLS,
+      note: midi('C2'),
+      velocity: 100,
+    })
+    await delay(50)
+    musicGenerator.send('noteoff', {
+      channel: InstrumentChannel.SWELLS,
+      note: midi('C2'),
+    })
+  }
+
+  /**
+   * Main loop
+   */
   function nextBar() {
     f += 1
 
@@ -576,15 +587,11 @@ async function run() {
           ? 0
           : activityData.length / (activityInfo.meta.numControls - 1)
 
-      resolumeOsc.sendValue(
-        '/composition/link3/values',
-        cast(relativeActivity, 0, 0.3, 0, 1)
-      )
-
       if (activityData.length > 0) {
         lastActivity = Date.now()
       }
 
+      // Update sentiment
       if (f % NUM_BARS_BETWEEN_CHORDS === 0) {
         const sentiment = getSentiment()
         if (mood !== sentiment.mood) {
@@ -593,15 +600,21 @@ async function run() {
 
         arousal = sentiment.arousal // eslint-disable-line
         mood = sentiment.mood // eslint-disable-line
-
-        const oscMoodValue =
-          values(Mood).indexOf(mood) / (values(Mood).length - 1)
-        const oscArousalValue =
-          values(Arousal).indexOf(arousal) / (values(Arousal).length - 1)
-        resolumeOsc.sendValue('/composition/link1/values', oscMoodValue)
-        resolumeOsc.sendValue('/composition/link2/values', oscArousalValue)
       }
 
+      // Resolume OSC
+      const oscMoodValue =
+        values(Mood).indexOf(mood) / (values(Mood).length - 1)
+      const oscArousalValue =
+        values(Arousal).indexOf(arousal) / (values(Arousal).length - 1)
+      resolumeOsc.sendValue('/composition/link1/values', oscMoodValue)
+      resolumeOsc.sendValue('/composition/link2/values', oscArousalValue)
+      resolumeOsc.sendValue(
+        '/composition/link3/values',
+        cast(relativeActivity, 0, 0.3, 0, 1)
+      )
+
+      // Poetry
       if (
         activityData.length === 0 &&
         Date.now() - lastActivity > 6000 &&
@@ -641,7 +654,7 @@ async function run() {
 
       sendStateCC()
 
-      if (f % NUM_BARS_BETWEEN_CHORDS === 0) {
+      if (f % (NUM_BARS_BETWEEN_CHORDS / 2) === 0) {
         playChords()
       }
       playSoloNotes()
