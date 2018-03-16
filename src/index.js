@@ -225,7 +225,7 @@ async function run() {
     controlIds: resolvedControlIds,
     device: relayDevice,
     onRelay: async packet => {
-      console.log('onRelay', packet)
+      // console.log('onRelay', packet)
 
       // Play a swell if we have come back from idle
       if (arousal === Arousal.PASSIVE && isSweeping === false) {
