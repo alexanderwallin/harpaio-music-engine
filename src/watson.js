@@ -26,7 +26,7 @@ async function say(sentence) {
         global_tenstion="-100%"
         rate="-100%"
         timbre="Breeze"
-        timbre_extent="50%"
+        timbre_extent="0%"
       >
         ${sentence}
       </voice-transformation>
