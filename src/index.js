@@ -22,11 +22,16 @@ const { getSentence } = require('./poet.js')
 const resolumeOsc = require('./resolume-osc.js')
 const {
   getActivity,
+  getRelativeActivity,
   getSentiment,
   startSentimentQuerying,
 } = require('./sentiment.js')
 
 // CLI options
+args.option(
+  'activity-smoothening',
+  'Transition time between levels of relative activity'
+)
 args.option(
   'arousal-peak',
   'The relative amount of active controls that is considered max arousal'
@@ -38,6 +43,7 @@ args.option('tempo', 'Tempo in bpm', 120)
 args.option('verbose', 'Log stuff to console', false)
 
 const {
+  activitySmoothening,
   arousalPeak,
   channels,
   controls,
@@ -48,6 +54,7 @@ const {
 
 const NOTE_TIME_DELAY = 0.05
 const NUM_BARS_BETWEEN_CHORDS = 4
+const ACTIVITY_SMOOTHENING = parseFloat(activitySmoothening)
 const AROUSAL_PEAK = parseFloat(arousalPeak)
 
 const musicGenerator = new Output(`Sonar Music Generator`, true)
@@ -195,7 +202,11 @@ async function run() {
   let activityData = []
   let lastActivity = Date.now()
   let relativeActivity = 0
-  startSentimentQuerying(500, { activityPeak: AROUSAL_PEAK })
+  console.log({ ACTIVITY_SMOOTHENING })
+  startSentimentQuerying(500, {
+    activityPeak: AROUSAL_PEAK,
+    activitySmoothening: ACTIVITY_SMOOTHENING,
+  })
 
   // Sequencing
   await syncWithAbleton()
@@ -582,10 +593,8 @@ async function run() {
         didComeBack = true
       }
 
-      relativeActivity =
-        activityInfo.meta === undefined
-          ? 0
-          : activityData.length / (activityInfo.meta.numControls - 1)
+      relativeActivity = getRelativeActivity()
+      console.log({ relativeActivity })
 
       if (activityData.length > 0) {
         lastActivity = Date.now()

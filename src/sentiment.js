@@ -13,8 +13,14 @@ let mood = Mood.NEUTRAL
 let moodIterator = 0
 
 let activeControls = {}
+let relativeActivity = 0
+let prevRelativeActivity = 0
 
-async function fetchSentimentalState({ activityPeak }) {
+function smoothen(a, b, smoothening) {
+  return smoothening * a + (1 - smoothening) * b
+}
+
+async function fetchSentimentalState({ activityPeak, activitySmoothening }) {
   const [predictionsResponse, activeControlsResponse] = await Promise.all([
     await got(`${API_URL}/channel-predictions`, {
       json: true,
@@ -51,8 +57,17 @@ async function fetchSentimentalState({ activityPeak }) {
 
   activeControls = activeControlsResponse.body
 
-  const relativeActivity =
+  const currentRelativeActivity =
     activeControls.data.length / activeControls.meta.numControls
+  relativeActivity = smoothen(
+    prevRelativeActivity,
+    currentRelativeActivity,
+    activitySmoothening
+  )
+  if (currentRelativeActivity < relativeActivity && relativeActivity < 0.01) {
+    relativeActivity = 0
+  }
+
   if (relativeActivity === 0) {
     arousal = Arousal.PASSIVE
   } else if (relativeActivity < activityPeak) {
@@ -61,11 +76,19 @@ async function fetchSentimentalState({ activityPeak }) {
     arousal = Arousal.ACTIVE
   }
 
-  return { arousal, mood }
+  prevRelativeActivity = relativeActivity
+
+  return { arousal, mood, relativeActivity }
 }
 
-function startSentimentQuerying(intervalMs, { activityPeak }) {
-  setInterval(() => fetchSentimentalState({ activityPeak }), intervalMs)
+function startSentimentQuerying(
+  intervalMs,
+  { activityPeak, activitySmoothening }
+) {
+  setInterval(
+    () => fetchSentimentalState({ activityPeak, activitySmoothening }),
+    intervalMs
+  )
 }
 
 function getSentiment() {
@@ -76,6 +99,11 @@ function getActivity() {
   return activeControls
 }
 
+function getRelativeActivity() {
+  return relativeActivity
+}
+
 module.exports.startSentimentQuerying = startSentimentQuerying
 module.exports.getSentiment = getSentiment
 module.exports.getActivity = getActivity
+module.exports.getRelativeActivity = getRelativeActivity
