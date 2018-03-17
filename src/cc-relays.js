@@ -7,27 +7,23 @@ const relayOutputDevice = new Output(`Sonar Controller Relay`, true)
 async function relayCc({ channels, controlIds, device, onRelay }) {
   const midiInput = await getMidiInput(device)
 
-  const onMidiMessage = (deltaTime, [command, inputControlId, value]) => {
-    if (176 <= command && command < 192) {
-      const inputChannel = command - 176
-
-      if (
-        channels.includes(inputChannel) === true &&
-        controlIds.includes(inputControlId)
-      ) {
-        const message = {
-          channel: inputChannel,
-          controller: inputControlId,
-          value,
-        }
-        relayOutputDevice.send('cc', message)
-        onRelay(message)
+  const onCcMessage = message => {
+    if (
+      channels.includes(message.channel) === true &&
+      controlIds.includes(message.controller)
+    ) {
+      const relayedMessage = {
+        channel: message.channel,
+        controller: message.controller,
+        value: message.value,
       }
+      relayOutputDevice.send('cc', relayedMessage)
+      onRelay(relayedMessage)
     }
   }
 
   if (midiInput !== null) {
-    midiInput.on('message', onMidiMessage)
+    midiInput.on('message', onCcMessage)
   }
 }
 

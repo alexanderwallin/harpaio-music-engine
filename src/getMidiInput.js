@@ -1,21 +1,25 @@
 /* eslint new-cap: 0 */
-const midi = require('midi')
+const easymidi = require('easymidi')
+const inquirer = require('inquirer')
 
-module.exports = async function getMidiInput(name) {
-  const input = new midi.input()
-  const portNames = new Array(input.getPortCount())
-    .fill(null)
-    .map((nothing, i) => input.getPortName(i))
-
+module.exports = async function getMidiInput({ device }) {
+  const portNames = easymidi.getInputs()
   if (portNames.length === 0) {
     return null
   }
 
-  const portIdx = portNames.indexOf(name)
-  if (portIdx === -1) {
-    return null
+  let resolvedPort = device
+  if (!resolvedPort) {
+    const { port } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'port',
+        message: 'Choose a MIDI port',
+        choices: portNames,
+      },
+    ])
+    resolvedPort = port
   }
 
-  input.openPort(portIdx)
-  return input
+  return new easymidi.Input(resolvedPort)
 }
