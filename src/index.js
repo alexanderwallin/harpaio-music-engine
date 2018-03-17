@@ -349,7 +349,17 @@ async function run() {
 
   function setDrums() {
     const patterns = [0, 1, 2].map(() =>
-      new Array(16).fill(0).map(() => Math.random() <= relativeActivity / 4)
+      new Array(16).fill(0).map(() => {
+        const castedRelativeActivity = cast(
+          clamp(relativeActivity, 0, AROUSAL_PEAK),
+          0,
+          AROUSAL_PEAK,
+          0,
+          1
+        )
+        const hitProbability = Math.random() < castedRelativeActivity / 3
+        return hitProbability
+      })
     )
 
     log(
