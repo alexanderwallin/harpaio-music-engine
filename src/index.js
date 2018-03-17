@@ -234,6 +234,23 @@ async function run() {
         await delay(2000)
         isSweeping = false
       }
+
+      if (packet.controller <= 7) {
+        resolumeOsc.sendValue(
+          `/composition/link${packet.controller + 1}/values`,
+          packet.value / 127
+        )
+      } else if (packet.controller === 8) {
+        resolumeOsc.sendValue(
+          `/layer1/clip1/connect`,
+          packet.value >= 64 ? 1 : 0
+        )
+      } else if (packet.controller === 64) {
+        resolumeOsc.sendValue(
+          `/layer1/clip2/connect`,
+          packet.value >= 64 ? 1 : 0
+        )
+      }
     },
   })
 
