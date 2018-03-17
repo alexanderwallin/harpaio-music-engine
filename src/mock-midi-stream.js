@@ -7,9 +7,20 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+function cast(val, fromLower, fromUpper, toLower, toUpper) {
+  if (toUpper === toLower) {
+    return toUpper
+  }
+
+  return (
+    (val - fromLower) * (toUpper - toLower) / (fromUpper - fromLower) + toLower
+  )
+}
+
 args.option('num-channels', 'Number of channels', 16)
+args.option('oscillate', 'Whether to let it go up and down in intensity', false)
 args.option('verbose', 'You know what this means', false)
-const { numChannels, verbose } = args.parse(process.argv)
+const { numChannels, oscillate, verbose } = args.parse(process.argv)
 
 const device = new Output(`Mock MIDI stream`, true)
 const numControls = 16
@@ -62,6 +73,18 @@ function listenToKeyboard() {
 function run() {
   next()
   listenToKeyboard()
+
+  if (oscillate === true) {
+    let f = 0
+    setInterval(() => {
+      const relativeIdx = Math.floor(
+        cast(Math.sin(f / 100), -1, 1, 0, 1) * delays.length
+      )
+      // console.log({ relativeIdx })
+      currentDelay = delays[relativeIdx]
+      f += 1
+    }, 100)
+  }
 }
 
 run()
