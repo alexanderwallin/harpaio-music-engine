@@ -668,13 +668,14 @@ async function run() {
         ])[0]
         spawn('node', ['src/say.js', '--sentence', `'${greeting}'`])
       } else if (activityData.length > 0 && didChangeMood === true) {
-        const sentence = shuffle([
-          `Oh... there we are`,
-          `Nice!`,
-          `That's what I'm talking about`,
-          `Feel the groove`,
-        ])[0]
-        spawn('node', ['src/say.js', '--sentence', `'${sentence}'`])
+        // People seem to get confused by this
+        // const sentence = shuffle([
+        //   `Oh... there we are`,
+        //   `Nice!`,
+        //   `That's what I'm talking about`,
+        //   `Feel the groove`,
+        // ])[0]
+        // spawn('node', ['src/say.js', '--sentence', `'${sentence}'`])
       }
 
       if (f % NUM_BARS_BETWEEN_CHORDS === 0) {
