@@ -202,7 +202,7 @@ async function run() {
   let activityData = []
   let lastActivity = Date.now()
   let relativeActivity = 0
-  console.log({ ACTIVITY_SMOOTHENING })
+  log({ ACTIVITY_SMOOTHENING })
   startSentimentQuerying(500, {
     activityPeak: AROUSAL_PEAK,
     activitySmoothening: ACTIVITY_SMOOTHENING,
@@ -225,7 +225,7 @@ async function run() {
     controlIds: resolvedControlIds,
     device: relayDevice,
     onRelay: async packet => {
-      // console.log('onRelay', packet)
+      // log('onRelay', packet)
 
       // Play a swell if we have come back from idle
       if (arousal === Arousal.PASSIVE && isSweeping === false) {
@@ -465,7 +465,7 @@ async function run() {
   }
 
   function playBass() {
-    console.log('playBass', arousal)
+    log('playBass', arousal)
     if (arousal !== Arousal.PASSIVE) {
       bassSequencer.play(bassSequence, { tempo })
     }
@@ -508,7 +508,7 @@ async function run() {
       cast(clamp(relativeActivity, 0, AROUSAL_PEAK), 0, AROUSAL_PEAK, 0, 1) *
         (hihatPatterns.length - 1)
     )
-    console.log({ hihatPatternIdx })
+    log({ hihatPatternIdx })
     const pattern = hihatPatterns[hihatPatternIdx]
     hihatSequence = pattern
       .map(
@@ -576,7 +576,7 @@ async function run() {
     poetryTimer = setInterval(() => {
       const sentence = getSentence(mood)
       spawn('node', ['src/say.js', '--sentence', `'${sentence}'`])
-      console.log({ sentence })
+      log({ sentence })
     }, 15000)
   }
 
@@ -589,7 +589,7 @@ async function run() {
    * Swells
    */
   async function triggerSwells() {
-    console.log('triggerSwells()')
+    log('triggerSwells()')
     musicGenerator.send('noteon', {
       channel: InstrumentChannel.SWELLS,
       note: midi('C2'),
@@ -621,7 +621,7 @@ async function run() {
       }
 
       relativeActivity = getRelativeActivity()
-      console.log({ relativeActivity })
+      log({ relativeActivity })
 
       if (activityData.length > 0) {
         lastActivity = Date.now()
