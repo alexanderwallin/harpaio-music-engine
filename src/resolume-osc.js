@@ -1,6 +1,7 @@
 const dgram = require('dgram')
 const osc = require('osc-min')
 
+const OSC_IP_ADDRESS = '10.102.20.145'
 const OSC_PORT = 7002
 
 const socket = dgram.createSocket('udp4')
@@ -16,7 +17,7 @@ function sendValue(address, value) {
       address,
       args: [value],
     })
-    socket.send(message, 0, message.length, OSC_PORT, err => {
+    socket.send(message, 0, message.length, OSC_PORT, OSC_IP_ADDRESS, err => {
       if (err) {
         reject(err)
       } else {

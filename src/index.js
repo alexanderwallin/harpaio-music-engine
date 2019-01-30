@@ -236,18 +236,16 @@ async function run() {
       }
 
       if (packet.controller <= 7) {
+        const layer = Math.floor(packet.controller / 4) + 1
         resolumeOsc.sendValue(
-          `/composition/link${packet.controller + 1}/values`,
+          `/layer${layer}/link${packet.controller % 4 + 1}/values`,
           packet.value / 127
         )
       } else if (packet.controller === 8) {
-        resolumeOsc.sendValue(
-          `/layer1/clip1/connect`,
-          packet.value >= 64 ? 1 : 0
-        )
+        resolumeOsc.sendValue(`/composition/link8/values`, packet.value / 127)
       } else if (packet.controller === 64) {
         resolumeOsc.sendValue(
-          `/layer1/clip2/connect`,
+          `/layer3/clip1/connect`,
           packet.value >= 64 ? 1 : 0
         )
       }
