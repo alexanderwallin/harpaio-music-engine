@@ -18,6 +18,11 @@ const {
   InstrumentChannel,
   CcRelayChannel,
 } = require('./constants.js')
+const {
+  getChord,
+  getNoteVelocityByColor,
+  getMelodyNotes,
+} = require('./orchestration.js')
 const { getSentence } = require('./poet.js')
 const resolumeOsc = require('./resolume-osc.js')
 const {
@@ -26,6 +31,7 @@ const {
   getSentiment,
   startSentimentQuerying,
 } = require('./sentiment.js')
+const { cast, delay } = require('./utils.js')
 
 // CLI options
 args.option(
@@ -59,36 +65,6 @@ const AROUSAL_PEAK = parseFloat(arousalPeak)
 
 const musicGenerator = new Output(`Sonar Music Generator`, true)
 
-const channelsArray = String(channels)
-  .split(',')
-  .map(x => parseInt(x, 10))
-const resolvedControlIds = String(controls)
-  .split(',')
-  .map(x => parseInt(x, 10))
-
-const fifthIntervals = ['1P', '5P']
-const majorIntervals = ['1P', '3M', '5P']
-const minorIntervals = ['1P', '3m', '5P']
-
-const majorRootKeys = ['1P', '4P', '5P']
-const minorRootKeys = ['2M', '3M', '6M']
-
-const neutralColoringIntervals = ['9M']
-const majorColoringIntervals = ['7M', '9M']
-const minorColoringIntervals = ['7m', '9M']
-
-const moodIntervals = {
-  [Mood.POSITIVE]: majorIntervals,
-  [Mood.NEUTRAL]: fifthIntervals,
-  [Mood.NEGATIVE]: minorIntervals,
-}
-
-const moodColoringIntervals = {
-  [Mood.POSITIVE]: majorColoringIntervals,
-  [Mood.NEUTRAL]: neutralColoringIntervals,
-  [Mood.NEGATIVE]: minorColoringIntervals,
-}
-
 const kickSequences = [
   [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
   [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
@@ -105,13 +81,12 @@ const hihatPatterns = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 ]
 
-async function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function pickRandom(arr) {
-  return shuffle(arr)[0]
-}
+const channelsArray = String(channels)
+  .split(',')
+  .map(x => parseInt(x, 10))
+const resolvedControlIds = String(controls)
+  .split(',')
+  .map(x => parseInt(x, 10))
 
 function log(...restArgs) {
   if (verbose === true) {
@@ -119,52 +94,10 @@ function log(...restArgs) {
   }
 }
 
-function cast(val, fromLower, fromUpper, toLower, toUpper) {
-  if (toUpper === toLower) {
-    return toUpper
-  }
-
-  return (
-    (val - fromLower) * (toUpper - toLower) / (fromUpper - fromLower) + toLower
-  )
-}
-
 function createSequencer(getCurrentTime) {
   return new Sequencer(getCurrentTime, {
     useWorker: false,
   })
-}
-
-function getChord(mood, arousal, rootKey) {
-  // Get key
-  const chordKey =
-    mood === Mood.POSITIVE
-      ? majorRootKeys[random(majorRootKeys.length - 1)]
-      : minorRootKeys[random(minorRootKeys.length - 1)]
-
-  // Get the chord intervals for the key
-  const chordIntervals = moodIntervals[mood]
-
-  // Select extra colorings
-  const coloringIntervals = shuffle(moodColoringIntervals[mood])
-  const numAppliedColorIntervals = {
-    [Arousal.PASSIVE]: 0,
-    [Arousal.NEUTRAL]: 1,
-    [Arousal.ACTIVE]: 2,
-  }[arousal]
-  const appliedColoringIntervals = coloringIntervals.slice(
-    0,
-    numAppliedColorIntervals
-  )
-
-  // Transpose and actualise chord notes
-  const chordAbsoluteKey = transpose(rootKey, chordKey)
-  const chord = chordIntervals
-    .concat(appliedColoringIntervals)
-    .concat('P-8')
-    .map(interval => transpose(chordAbsoluteKey, interval))
-
-  return chord
 }
 
 let lastAbletonBeat = 0
@@ -210,7 +143,7 @@ async function run() {
 
   // Sequencing
   await syncWithAbleton()
-  const getCurrentTime = () => lastAbletonBeat * 60 / tempo
+  const getCurrentTime = () => (lastAbletonBeat * 60) / tempo
 
   const clockSequencer = createSequencer(getCurrentTime)
   const soloNoteSequencer = createSequencer(getCurrentTime)
@@ -238,7 +171,7 @@ async function run() {
       if (packet.controller <= 7) {
         const layer = Math.floor(packet.controller / 4) + 1
         resolumeOsc.sendValue(
-          `/layer${layer}/link${packet.controller % 4 + 1}/values`,
+          `/layer${layer}/link${(packet.controller % 4) + 1}/values`,
           packet.value / 127
         )
       } else if (packet.controller === 8) {
@@ -281,14 +214,9 @@ async function run() {
       musicGenerator.send('noteon', {
         channel: InstrumentChannel.PAD,
         note: midi(note),
-        velocity:
-          flatten([majorColoringIntervals, minorColoringIntervals]).includes(
-            note
-          ) === true
-            ? random(10, 40)
-            : random(60, 100),
+        velocity: getNoteVelocityByColor(note, chord),
       })
-      await delay(NUM_BARS_BETWEEN_CHORDS / 2 * 3.95 * 60 * 1000 / tempo)
+      await delay(((NUM_BARS_BETWEEN_CHORDS / 2) * 3.95 * 60 * 1000) / tempo)
       musicGenerator.send('noteoff', {
         channel: InstrumentChannel.PAD,
         note: midi(note),
@@ -313,7 +241,7 @@ async function run() {
           note: midi(note),
           velocity: 100,
         })
-        await delay(duration('1') * 1.95 * 1000 * 4 * tempo / 60)
+        await delay((duration('1') * 1.95 * 1000 * 4 * tempo) / 60)
         musicGenerator.send('noteoff', {
           channel: InstrumentChannel.ARPEGGIATOR,
           note: midi(note),
@@ -326,18 +254,13 @@ async function run() {
 
   // Play solo note
   function setSoloNotes() {
-    const soloNotes = shuffle(chord)
-      .slice(0, Math.round(relativeActivity * chord.length))
-      .map(note => transpose(note, '8P'))
-      .map(note => transpose(note, arousal === Arousal.ACTIVE ? '8P' : '1P'))
-    const soloNoteDurations = soloNotes.map(() => pickRandom(['16', '8']))
-    const soloNoteDelay = pickRandom(['16', '8', '4'].map(duration).concat(0))
+    const melody = getMelodyNotes(mood, arousal, relativeActivity, chord)
 
-    scheduledSoloNotes = soloNotes.map((note, i) => ({
-      time: soloNoteDurations
+    scheduledSoloNotes = melody.notes.map((note, i) => ({
+      time: melody.durations
         .slice(0, i)
         .map(x => duration(x))
-        .reduce((aggr, x) => aggr + x, soloNoteDelay + NOTE_TIME_DELAY),
+        .reduce((aggr, x) => aggr + x, melody.delay + NOTE_TIME_DELAY),
       callback: async () => {
         musicGenerator.send('noteon', {
           channel: InstrumentChannel.MELODY,
@@ -347,7 +270,7 @@ async function run() {
 
         log(`+ ${note}`)
 
-        await delay(1000 * (60 / tempo) / 8)
+        await delay((1000 * (60 / tempo)) / 8)
         musicGenerator.send('noteoff', {
           channel: InstrumentChannel.MELODY,
           note: midi(note),
@@ -472,25 +395,24 @@ async function run() {
   function setKick() {
     const kickPattern = kickSequences[Math.floor(f / 6) % kickSequences.length]
     kickSequence = kickPattern
-      .map(
-        (isOn, i) =>
-          isOn
-            ? {
-                time: duration('16') * i + NOTE_TIME_DELAY,
-                callback: async () => {
-                  musicGenerator.send('noteon', {
-                    channel: InstrumentChannel.KICK,
-                    note: midi('C2'),
-                    velocity: 100,
-                  })
-                  await delay(1)
-                  musicGenerator.send('noteon', {
-                    channel: InstrumentChannel.KICK,
-                    note: midi('C2'),
-                  })
-                },
-              }
-            : null
+      .map((isOn, i) =>
+        isOn
+          ? {
+              time: duration('16') * i + NOTE_TIME_DELAY,
+              callback: async () => {
+                musicGenerator.send('noteon', {
+                  channel: InstrumentChannel.KICK,
+                  note: midi('C2'),
+                  velocity: 100,
+                })
+                await delay(1)
+                musicGenerator.send('noteon', {
+                  channel: InstrumentChannel.KICK,
+                  note: midi('C2'),
+                })
+              },
+            }
+          : null
       )
       .filter(x => x !== null)
   }
@@ -509,26 +431,25 @@ async function run() {
     log({ hihatPatternIdx })
     const pattern = hihatPatterns[hihatPatternIdx]
     hihatSequence = pattern
-      .map(
-        (isOn, i) =>
-          isOn
-            ? {
-                time: duration('16') * i + NOTE_TIME_DELAY,
-                callback: async () => {
-                  const note = midi('C2') + Math.floor(f / 12) % 2
-                  musicGenerator.send('noteon', {
-                    channel: InstrumentChannel.HIHAT,
-                    note,
-                    velocity: 100,
-                  })
-                  await delay(100)
-                  musicGenerator.send('noteoff', {
-                    channel: InstrumentChannel.HIHAT,
-                    note,
-                  })
-                },
-              }
-            : null
+      .map((isOn, i) =>
+        isOn
+          ? {
+              time: duration('16') * i + NOTE_TIME_DELAY,
+              callback: async () => {
+                const note = midi('C2') + (Math.floor(f / 12) % 2)
+                musicGenerator.send('noteon', {
+                  channel: InstrumentChannel.HIHAT,
+                  note,
+                  velocity: 100,
+                })
+                await delay(100)
+                musicGenerator.send('noteoff', {
+                  channel: InstrumentChannel.HIHAT,
+                  note,
+                })
+              },
+            }
+          : null
       )
       .filter(x => x)
   }
