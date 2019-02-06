@@ -3,33 +3,17 @@
 <head>
   <title>harpa browser</title>
   <style>
+  html, body {
+    margin: 0;
+    padding: 0;
+  }
   body {
     background: black;
-  }
-
-  #app {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    background: white;
-    opacity: 0;
-  }
-
-  #speech {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100px;
-    height: 10px;
-    background: red;
   }
   </style>
 </head>
 <body>
-  <div id="app"></div>
-  <div id="speech"></div>
+  <canvas id="visuals"></canvas>
   <script src="/js/app.js"></script>
 </body>
 </html>

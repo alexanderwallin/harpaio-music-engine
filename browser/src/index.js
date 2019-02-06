@@ -1,8 +1,9 @@
-/* global document, WebSocket, window */
+/* global WebSocket, window */
 const Tone = require('tone')
 const getAudioContext = require('audio-context')
 
 const { API_HOSTNAME } = require('./configs.js')
+const { updateVisuals } = require('./visuals.js')
 const { fetchSentenceAudio } = require('./watson.js')
 
 const decodeContext = getAudioContext()
@@ -46,7 +47,6 @@ const meter = new Tone.Meter(0.95)
 reverb.connect(meter)
 
 // Speech effects
-// const speechChorus = new Tone.Chorus(0.5, 10, 0.3)
 const speechPitch = new Tone.PitchShift(-3)
 speechPitch.set('feedback', 0.1)
 const speechReverb = new Tone.Reverb(5).toMaster()
@@ -54,20 +54,15 @@ speechReverb.set('wet', 0.5)
 speechReverb.generate()
 
 speechPitch.connect(speechReverb)
-// speechChorus.connect(speechReverb)
 
 const speechMeter = new Tone.Meter(0.95)
 speechReverb.connect(speechMeter)
 
-const $app = document.querySelector('#app')
-const $speechMeter = document.querySelector('#speech')
-
 function updateBackgroundColor() {
   const loudness = Tone.dbToGain(meter.getLevel())
-  $app.style.opacity = loudness * 3
+  const speechLoudness = Tone.dbToGain(speechMeter.getLevel())
 
-  const speechLoudness = Tone.dbToGain(speechMeter.getLevel()) * 2
-  $speechMeter.style.transform = `scaleX(${speechLoudness})`
+  updateVisuals(loudness, speechLoudness)
 
   window.requestAnimationFrame(updateBackgroundColor)
 }
