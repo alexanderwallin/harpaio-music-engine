@@ -17,6 +17,13 @@ module.exports = {
   module: {
     rules: [],
   },
+  plugins: [
+    new webpack.DefinePlugin({
+      'process.env': {
+        API_HOSTNAME: JSON.stringify(process.env.API_HOSTNAME),
+      },
+    }),
+  ],
   devtool: 'source-map',
   devServer: {
     contentBase: path.join(__dirname, 'public'),

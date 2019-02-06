@@ -2,6 +2,7 @@
 const Tone = require('tone')
 const getAudioContext = require('audio-context')
 
+const { API_HOSTNAME } = require('./configs.js')
 const { fetchSentenceAudio } = require('./watson.js')
 
 const decodeContext = getAudioContext()
@@ -76,7 +77,7 @@ updateBackgroundColor()
 const wisdomQueue = {}
 
 // Create socket server
-const ws = new WebSocket(`ws://${window.location.hostname}:8221`)
+const ws = new WebSocket(`ws://${API_HOSTNAME}`)
 ws.onerror = () => console.log('WebSocket error')
 ws.onopen = () => console.log('WebSocket connection established')
 ws.onclose = () => console.log('WebSocket connection closed')

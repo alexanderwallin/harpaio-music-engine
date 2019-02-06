@@ -24,6 +24,7 @@ function broadcast(wsServerInstance, type, body) {
 }
 
 const PORT = process.env.PORT || 8221
+const APP_URL = process.env.APP_URL || 'http://localhost:8220'
 
 const app = express()
 const server = http.createServer(app)
@@ -36,7 +37,7 @@ wsServer.on('connection', wsSocket => {
 
 app.use(
   cors({
-    origin: 'http://localhost:8220',
+    origin: APP_URL,
   })
 )
 

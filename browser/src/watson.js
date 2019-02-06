@@ -1,15 +1,17 @@
 /* global fetch, window, XMLHttpRequest */
 require('isomorphic-fetch')
 
+const { API_HOSTNAME } = require('./configs.js')
+
 function fetchToken() {
-  return fetch('http://localhost:8221/watson-token')
+  return fetch(`http://${API_HOSTNAME}/watson-token`)
     .then(response => response.json())
     .then(({ data }) => data)
 }
 
 function fetchSentenceAudio(sentence) {
   return new Promise(resolve => {
-    const url = `http://localhost:8221/speech?sentence=${window.encodeURIComponent(
+    const url = `http://${API_HOSTNAME}/speech?sentence=${window.encodeURIComponent(
       sentence
     )}`
     const xhr = new XMLHttpRequest()

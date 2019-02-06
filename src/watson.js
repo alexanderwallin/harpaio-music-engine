@@ -1,5 +1,4 @@
 require('isomorphic-fetch')
-const FormData = require('form-data')
 const got = require('got')
 const { shuffle } = require('lodash')
 const Speaker = require('speaker')
@@ -45,14 +44,6 @@ async function getToken() {
 
 async function fetchSpeech(sentence) {
   return new Promise((resolve, reject) => {
-    // Creats Watson TTS instance
-    // const tts = new TextToSpeech({
-    //   // username: USERNAME,
-    //   // password: PASSWORD,
-    //   iam_apikey: WATSON_API_KEY,
-    //   // url: 'https://gateway-wdc.watsonplatform.net/text-to-speech/api',
-    // })
-
     const text = `
     <speak>
       <voice-transformation
@@ -75,15 +66,13 @@ async function fetchSpeech(sentence) {
       'en-US_MichaelVoice',
     ])[0]
 
-    console.log({ voice })
-
     const body = JSON.stringify({ text, voice })
 
     const headers = {
       Accept: 'audio/wav',
-      Authorization: `Basic ${Buffer.from(
-        'apikey:0oDAOXNcEZbQ33cdKD6Mxs_jtD8yQ1uxg2UdqNM1XFl2'
-      ).toString('base64')}`,
+      Authorization: `Basic ${Buffer.from(`apikey:${WATSON_API_KEY}`).toString(
+        'base64'
+      )}`,
       'Content-Type': 'application/json',
     }
 
@@ -99,7 +88,10 @@ async function fetchSpeech(sentence) {
       .then(response => {
         resolve(response.body)
       })
-      .catch(err => console.error(err))
+      .catch(err => {
+        console.error(err)
+        reject(err)
+      })
   })
 }
 
