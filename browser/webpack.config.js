@@ -1,6 +1,12 @@
 const path = require('path')
+const webpack = require('webpack')
 
 module.exports = {
+  node: {
+    fs: 'empty',
+    net: 'empty',
+    tls: 'empty',
+  },
   entry: path.join(__dirname, 'src/index.js'),
   output: {
     path: path.resolve(__dirname, 'public/js'),
